@@ -1,0 +1,173 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:muzo/services/lyrics_service.dart';
+import 'package:muzo/widgets/lyrics_view.dart';
+import 'package:muzo/providers/player_provider.dart';
+import 'package:muzo/providers/theme_provider.dart';
+import 'dart:ui';
+
+class LyricsScreen extends ConsumerStatefulWidget {
+  final String title;
+  final String artist;
+  final String? thumbnailUrl;
+  final int durationSeconds;
+
+  const LyricsScreen({
+    super.key,
+    required this.title,
+    required this.artist,
+    this.thumbnailUrl,
+    required this.durationSeconds,
+  });
+
+  @override
+  ConsumerState<LyricsScreen> createState() => _LyricsScreenState();
+}
+
+class _LyricsScreenState extends ConsumerState<LyricsScreen> {
+  Lyrics? _lyrics;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLyrics();
+  }
+
+  Future<void> _fetchLyrics() async {
+    try {
+      final lyrics = await ref
+          .read(lyricsServiceProvider)
+          .fetchLyrics(widget.title, widget.artist, widget.durationSeconds);
+      if (mounted) {
+        setState(() {
+          _lyrics = lyrics;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final audioHandler = ref.watch(audioHandlerProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        leading: IconButton(
+          icon: Icon(
+            CupertinoIcons.chevron_down,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Column(
+          children: [
+            Text(
+              "Lyrics",
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            ),
+            Text(
+              "${widget.title} • ${widget.artist}",
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        centerTitle: true,
+      ),
+      body: Stack(
+        children: [
+          // Background Blur
+          Positioned.fill(
+            child: widget.thumbnailUrl != null
+                ? Image.network(
+                    widget.thumbnailUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.black),
+                  )
+                : Container(color: Colors.black),
+          ),
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30), // Reduced for 60fps scrolling
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.6), // Darkened for text contrast
+              ),
+            ),
+          ),
+
+          // Content
+          SafeArea(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  )
+                : _lyrics == null
+                ? _buildNotFound()
+                : LyricsView(
+                    lyrics: _lyrics!,
+                    onClose: () {},
+                    positionStream: audioHandler.player.positionStream,
+                    totalDuration:
+                        Duration(seconds: widget.durationSeconds),
+                    isEmbedded: false,
+                    accentColor: () {
+                      final palette = ref
+                          .watch(currentPaletteProvider)
+                          .asData
+                          ?.value;
+                      if (palette != null) {
+                        return (palette.darkVibrantColor?.color ??
+                            palette.darkMutedColor?.color ??
+                            palette.dominantColor?.color);
+                      }
+                      return null;
+                    }(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotFound() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            CupertinoIcons.quote_bubble,
+            size: 64,
+            color: Colors.white.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "Lyrics not found",
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "We couldn't find lyrics for this song.",
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
