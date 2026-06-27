@@ -1,7 +1,6 @@
 import 'package:muzo/screens/profile_screen.dart';
 import 'package:muzo/screens/user_tracks_screen.dart';
 import 'package:muzo/screens/about_screen.dart';
-import 'package:muzo/screens/auth_screen.dart';
 import 'package:muzo/services/auth_service.dart';
 import 'package:muzo/widgets/app_alert_dialog.dart';
 import 'package:muzo/screens/search_screen.dart';
@@ -27,6 +26,9 @@ import 'package:muzo/providers/player_provider.dart';
 import 'package:muzo/widgets/quick_picks_section.dart';
 import 'package:muzo/widgets/top_on_muzo_section.dart';
 import 'package:muzo/providers/explore_provider.dart';
+import 'package:muzo/services/navigator_key.dart';
+import 'package:muzo/providers/auth_gate_provider.dart';
+import 'package:muzo/providers/settings_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -90,7 +92,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SliverToBoxAdapter(child: QuickPicksSection()),
 
             // Top on Muzo (Trending)
-            const SliverToBoxAdapter(child: TopOnMuzoSection()),
+            if (ref.watch(settingsProvider).showTopOnMuzo)
+              const SliverToBoxAdapter(child: TopOnMuzoSection()),
 
             // Recently Played
             _buildRecentlyPlayedSection(context, ref),
@@ -116,7 +119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final username = storage.username ?? 'User';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -124,19 +127,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(7),
                 child: Image.asset(
                   'assets/logo.png',
-                  height: 32,
-                  width: 32,
+                  height: 28,
+                  width: 28,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Text(
                 'Muzo',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.8,
                 ),
@@ -280,8 +283,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'Profile',
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
-                            context,
+                          nestedNavigatorKey.currentState?.push(
                             SlidePageRoute(page: const ProfileScreen()),
                           );
                         },
@@ -291,8 +293,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'My Uploads',
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
-                            context,
+                          nestedNavigatorKey.currentState?.push(
                             SlidePageRoute(page: const UserTracksScreen()),
                           );
                         },
@@ -302,8 +303,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'Settings',
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
-                            context,
+                          nestedNavigatorKey.currentState?.push(
                             SlidePageRoute(page: const SettingsScreen()),
                           );
                         },
@@ -313,8 +313,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'About Muzo',
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
-                            context,
+                          nestedNavigatorKey.currentState?.push(
                             SlidePageRoute(page: const AboutScreen()),
                           );
                         },
@@ -331,7 +330,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       const SizedBox(height: 4),
                       if (isAuthenticated)
                         _ProfileMenuItem(
-                          icon: FluentIcons.sign_out_24_regular,
+                          icon: Icons.logout_rounded,
                           title: 'Logout',
                           color: Colors.redAccent,
                           onTap: () {
@@ -363,10 +362,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           color: Theme.of(context).colorScheme.primary,
                           onTap: () {
                             Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              SlidePageRoute(page: const AuthScreen()),
-                            );
+                            ref.read(isGuestModeProvider.notifier).state = false;
                           },
                         ),
                     ],
@@ -378,12 +374,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   width: 1.0,
                 ),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 child: ValueListenableBuilder(
                   valueListenable: storage.userAvatarListenable,
                   builder: (context, box, _) {
@@ -395,42 +391,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   
                     if (isSvg && cachedSvg != null) {
                       return SvgPicture.string(cachedSvg,
-                          height: 36, width: 36, fit: BoxFit.cover);
+                          height: 30, width: 30, fit: BoxFit.cover);
                     }
                     if (avatarUrl != null) {
                       if (isSvg) {
                         return SvgPicture.network(
                           avatarUrl,
-                          height: 36,
-                          width: 36,
+                          height: 30,
+                          width: 30,
                           fit: BoxFit.cover,
                           placeholderBuilder: (context) => Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.all(8),
                               child: const CircularProgressIndicator(
                                   strokeWidth: 2)),
                         );
                       } else {
                         return CachedNetworkImage(
                           imageUrl: avatarUrl,
-                          height: 36,
-                          width: 36,
+                          height: 30,
+                          width: 30,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.all(8),
                               child: const CircularProgressIndicator(
                                   strokeWidth: 2)),
                           errorWidget: (context, url, error) =>
-                              Icon(FluentIcons.person_24_filled, size: 20),
+                              Icon(FluentIcons.person_24_filled, size: 18),
                         );
                       }
                     }
                     return SvgPicture.network(
                       'https://api.dicebear.com/9.x/rings/svg?seed=$username',
-                      height: 36,
-                      width: 36,
+                      height: 30,
+                      width: 30,
                       fit: BoxFit.cover,
                       placeholderBuilder: (context) => Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(8),
                           child: const CircularProgressIndicator(strokeWidth: 2)),
                     );
                   },
@@ -447,13 +443,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 14),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
-              fontSize: 20,
+              fontSize: 17,
               letterSpacing: -0.3,
             ),
       ),

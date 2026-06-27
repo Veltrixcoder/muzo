@@ -17,6 +17,8 @@ import 'package:muzo/widgets/sleep_timer_dialog.dart';
 import 'package:muzo/screens/artist_screen.dart';
 import 'package:muzo/screens/album_screen.dart';
 import 'package:muzo/widgets/glass_container.dart';
+import 'package:muzo/utils/page_routes.dart';
+import 'package:muzo/services/muzo_api_service.dart';
 
 class SongOptionsMenu extends ConsumerWidget {
   final MuzoItem result;
@@ -142,19 +144,18 @@ class SongOptionsMenu extends ConsumerWidget {
               subtitle: result.album!.name,
               onTap: () {
                 onClose?.call();
-                final ctx = navigatorKey.currentContext;
-                if (ctx != null) {
-                  Navigator.push(
-                    ctx,
-                    MaterialPageRoute(
-                      builder: (context) => AlbumScreen(
-                        albumId: result.album!.id,
-                        albumName: result.album!.name,
-                        thumbnailUrl: imageUrl,
-                      ),
-                    ),
-                  );
+                if (fromPlayer) {
+                  navigatorKey.currentState?.pop();
                 }
+                nestedNavigatorKey.currentState?.push(
+                  SlidePageRoute(
+                    page: AlbumScreen(
+                      albumId: result.album!.id,
+                      albumName: result.album!.name,
+                      thumbnailUrl: imageUrl,
+                    ),
+                  ),
+                );
               },
             ),
           );
@@ -163,27 +164,81 @@ class SongOptionsMenu extends ConsumerWidget {
         // 2. Go to Artist
         if (result.artists != null && result.artists!.isNotEmpty) {
           final artist = result.artists!.first;
-          if (artist.id != null && artist.id!.isNotEmpty) {
+          if (artist.name.isNotEmpty && artist.name != 'Unknown') {
             verticalOptions.add(
               _buildVerticalItem(
                 context,
                 icon: CupertinoIcons.person_crop_circle,
                 title: 'Go to artist',
                 subtitle: artist.name,
-                onTap: () {
+                onTap: () async {
                   onClose?.call();
-                  final ctx = navigatorKey.currentContext;
-                  if (ctx != null) {
-                    Navigator.push(
-                      ctx,
-                      MaterialPageRoute(
-                        builder: (context) => ArtistScreen(
+                  if (fromPlayer) {
+                    navigatorKey.currentState?.pop();
+                  }
+
+                  if (artist.id != null && artist.id!.isNotEmpty) {
+                    nestedNavigatorKey.currentState?.push(
+                      SlidePageRoute(
+                        page: ArtistScreen(
                           browseId: artist.id!,
                           artistName: artist.name,
                           thumbnailUrl: imageUrl,
                         ),
                       ),
                     );
+                  } else {
+                    // Artist ID is missing. Fetch it using search.
+                    final rootContext = navigatorKey.currentContext;
+                    if (rootContext == null) return;
+
+                    showDialog<void>(
+                      context: rootContext,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+
+                    try {
+                      final apiService = ref.read(muzoApiServiceProvider);
+                      final searchResponse = await apiService.search(
+                        artist.name,
+                        filter: 'artists',
+                      );
+
+                      // Dismiss loading indicator
+                      if (rootContext.mounted) {
+                        Navigator.of(rootContext).pop();
+                      }
+
+                      if (searchResponse.results.isNotEmpty) {
+                        final foundArtist = searchResponse.results.first;
+                        final String? foundId = foundArtist.browseId ?? foundArtist.videoId;
+                        if (foundId != null && foundId.isNotEmpty) {
+                          nestedNavigatorKey.currentState?.push(
+                            SlidePageRoute(
+                              page: ArtistScreen(
+                                browseId: foundId,
+                                artistName: foundArtist.title,
+                                thumbnailUrl: foundArtist.thumbnails.isNotEmpty ? foundArtist.thumbnails.last.url : '',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                      }
+
+                      if (rootContext.mounted) {
+                        showGlassSnackBar(rootContext, 'Artist details not found');
+                      }
+                    } catch (e) {
+                      // Dismiss loading
+                      if (rootContext.mounted) {
+                        Navigator.of(rootContext).pop();
+                        showGlassSnackBar(rootContext, 'Error finding artist');
+                      }
+                    }
                   }
                 },
               ),

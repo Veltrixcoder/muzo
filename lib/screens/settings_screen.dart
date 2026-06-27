@@ -7,7 +7,6 @@ import 'package:muzo/providers/settings_provider.dart';
 import 'package:muzo/services/storage_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:muzo/services/auth_service.dart';
-import 'package:muzo/screens/auth_screen.dart';
 import 'package:muzo/widgets/glass_container.dart';
 import 'package:muzo/screens/settings/components/font_picker_dialog.dart';
 import 'package:muzo/providers/player_provider.dart';
@@ -19,16 +18,16 @@ class SettingsScreen extends ConsumerWidget {
 
   Widget _buildSettingIconBox(IconData icon, Color color) {
     return Container(
-      width: 28,
-      height: 28,
+      width: 26,
+      height: 26,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Icon(
         icon,
         color: Colors.white,
-        size: 16,
+        size: 14,
       ),
     );
   }
@@ -47,63 +46,72 @@ class SettingsScreen extends ConsumerWidget {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 160),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSection(context, 'Appearance', [
                 ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(FluentIcons.paint_brush_24_regular, Colors.purple),
                   title: Text(
                     'App Theme',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                   subtitle: Text(
                     _themeLabel(settingsState.themeType),
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5),
                   ),
                   trailing: Icon(
                     CupertinoIcons.chevron_right,
-                    size: 13,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+                    size: 12,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
                   ),
                   onTap: () =>
                       _showThemeDialog(context, ref, settingsState.themeType),
                 ),
                 ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(Icons.dark_mode_rounded, Colors.blueGrey),
                   title: Text(
                     'AMOLED Black',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                   subtitle: Text(
-                    'Use pure black background in dark mode',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
+                    'Pure black background in dark mode',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5),
                   ),
-                  trailing: Switch(
-                    value: settingsState.isAmoled,
-                    onChanged: (value) =>
-                        ref.read(settingsProvider.notifier).setAmoled(value),
-                    activeThumbColor: Theme.of(context).colorScheme.primary,
+                  trailing: Transform.scale(
+                    scale: 0.75,
+                    child: Switch(
+                      value: settingsState.isAmoled,
+                      onChanged: (value) =>
+                          ref.read(settingsProvider.notifier).setAmoled(value),
+                      activeThumbColor: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
                 Consumer(
                   builder: (context, ref, _) {
                     final currentFont = ref.watch(settingsProvider).appFontFamily;
                     return ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                       leading: _buildSettingIconBox(FluentIcons.text_font_24_regular, Colors.indigo),
                       title: Text(
                         'App Font',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                       subtitle: Text(
                         currentFont,
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5),
                       ),
                       trailing: Icon(
                         CupertinoIcons.chevron_right,
-                        size: 13,
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+                        size: 12,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
                       ),
                       onTap: () {
                         showModalBottomSheet(
@@ -116,30 +124,34 @@ class SettingsScreen extends ConsumerWidget {
                     );
                   },
                 ),
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  leading: _buildSettingIconBox(FluentIcons.star_24_regular, Colors.orange),
+                  title: Text(
+                    'Show Top on Muzo',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    'Trending songs section on Home screen',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5),
+                  ),
+                  trailing: Transform.scale(
+                    scale: 0.75,
+                    child: Switch(
+                      value: settingsState.showTopOnMuzo,
+                      onChanged: (value) =>
+                          ref.read(settingsProvider.notifier).setShowTopOnMuzo(value),
+                      activeThumbColor: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
               ]),
 
               _buildSection(context, 'Audio Quality', [
-                _buildQualityOption(
-                  context,
-                  ref,
-                  'High',
-                  AudioQuality.high,
-                  currentQuality,
-                ),
-                _buildQualityOption(
-                  context,
-                  ref,
-                  'Medium',
-                  AudioQuality.medium,
-                  currentQuality,
-                ),
-                _buildQualityOption(
-                  context,
-                  ref,
-                  'Low',
-                  AudioQuality.low,
-                  currentQuality,
-                ),
+                _buildQualityOption(context, ref, 'High', AudioQuality.high, currentQuality),
+                _buildQualityOption(context, ref, 'Medium', AudioQuality.medium, currentQuality),
+                _buildQualityOption(context, ref, 'Low', AudioQuality.low, currentQuality),
               ]),
 
               Consumer(
@@ -153,108 +165,69 @@ class SettingsScreen extends ConsumerWidget {
                           valueListenable: ref.watch(audioHandlerProvider).isLofiModeNotifier,
                           builder: (context, isLofi, _) {
                             return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                               leading: _buildSettingIconBox(Icons.waves_rounded, Colors.blue),
-                              title: Text(
-                                'Lofi Mode',
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                              ),
-                              subtitle: Text(
-                                'Apply speed and pitch effects',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                                  fontSize: 11,
+                              title: Text('Lofi Mode', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                              subtitle: Text('Apply speed and pitch effects', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                              trailing: Transform.scale(
+                                scale: 0.75,
+                                child: Switch(
+                                  value: isLofi,
+                                  onChanged: (value) => ref.read(audioHandlerProvider).toggleLofiMode(),
+                                  activeThumbColor: Theme.of(context).colorScheme.primary,
                                 ),
-                              ),
-                              trailing: Switch(
-                                value: isLofi,
-                                onChanged: (value) =>
-                                    ref.read(audioHandlerProvider).toggleLofiMode(),
-                                activeThumbColor: Theme.of(context).colorScheme.primary,
                               ),
                             );
                           },
                         ),
                         ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                           leading: _buildSettingIconBox(FluentIcons.music_note_2_24_regular, Colors.teal),
-                          title: Text(
-                            'Lofi Mode Fine-tuning',
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            'Adjust Speed and Pitch',
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
-                          ),
-                          trailing: Icon(
-                            CupertinoIcons.chevron_right,
-                            size: 13,
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
-                          ),
-                          onTap: () {
-                            _showLofiSettingsDialog(context, ref, storage);
-                          },
+                          title: Text('Lofi Fine-tuning', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                          subtitle: Text('Adjust Speed and Pitch', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                          trailing: Icon(CupertinoIcons.chevron_right, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                          onTap: () => _showLofiSettingsDialog(context, ref, storage),
                         ),
                         ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                           leading: _buildSettingIconBox(Icons.all_inclusive, Colors.tealAccent.shade700),
-                          title: Text(
-                            'Auto Queue',
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            'Automatically add recommended songs to queue',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                              fontSize: 11,
+                          title: Text('Auto Queue', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                          subtitle: Text('Auto-add recommended songs to queue', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                          trailing: Transform.scale(
+                            scale: 0.75,
+                            child: Switch(
+                              value: storage.isAutoQueueEnabled,
+                              onChanged: (value) => storage.setAutoQueueEnabled(value),
+                              activeThumbColor: Theme.of(context).colorScheme.primary,
                             ),
-                          ),
-                          trailing: Switch(
-                            value: storage.isAutoQueueEnabled,
-                            onChanged: (value) =>
-                                storage.setAutoQueueEnabled(value),
-                            activeThumbColor: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                         ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                           leading: _buildSettingIconBox(FluentIcons.open_24_regular, Colors.red),
-                          title: Text(
-                            'Open YouTube Links in App',
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            'Intercept YouTube URLs to play locally',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                              fontSize: 11,
+                          title: Text('Open YouTube Links', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                          subtitle: Text('Play YouTube URLs in-app', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                          trailing: Transform.scale(
+                            scale: 0.75,
+                            child: Switch(
+                              value: storage.handleAppLinks,
+                              onChanged: (value) async => await storage.setHandleAppLinks(value),
+                              activeThumbColor: Theme.of(context).colorScheme.primary,
                             ),
-                          ),
-                          trailing: Switch(
-                            value: storage.handleAppLinks,
-                            onChanged: (value) async {
-                              await storage.setHandleAppLinks(value);
-                            },
-                            activeThumbColor: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                         ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                           leading: _buildSettingIconBox(FluentIcons.battery_warning_24_regular, Colors.amber.shade800),
-                          title: Text(
-                            'Ignore Battery Optimizations',
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            'Prevent app from being suspended',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                              fontSize: 11,
-                            ),
-                          ),
-                          trailing: Icon(
-                            CupertinoIcons.chevron_right,
-                            size: 13,
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
-                          ),
-                          onTap: () async => await Permission
-                              .ignoreBatteryOptimizations
-                              .request(),
+                          title: Text('Ignore Battery Optimizations', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                          subtitle: Text('Prevent app from being suspended', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                          trailing: Icon(CupertinoIcons.chevron_right, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                          onTap: () async => await Permission.ignoreBatteryOptimizations.request(),
                         ),
                       ]);
                     },
@@ -269,48 +242,29 @@ class SettingsScreen extends ConsumerWidget {
                     valueListenable: storage.settingsListenable,
                     builder: (context, box, _) {
                       return _buildSection(context, 'Account', [
-                        // Show User Info if logged in
                         if (storage.username != null) ...[
                           ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                             leading: _buildSettingIconBox(FluentIcons.person_24_regular, Colors.grey),
-                            title: Text(
-                              'Logged in as ${storage.username}',
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                            ),
-                            subtitle: Text(
-                              storage.email ?? '',
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 11),
-                            ),
+                            title: Text('Logged in as ${storage.username}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                            subtitle: Text(storage.email ?? '', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 10.5)),
                             trailing: TextButton(
                               onPressed: () async {
                                 await ref.read(authServiceProvider).logout();
                                 ref.read(isGuestModeProvider.notifier).state = false;
                               },
-                              child: const Text(
-                                'Logout',
-                                style: TextStyle(color: Colors.red),
-                              ),
+                              child: const Text('Logout', style: TextStyle(color: Colors.red, fontSize: 12)),
                             ),
                           ),
                         ] else ...[
                           ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                             leading: _buildSettingIconBox(FluentIcons.person_add_24_regular, Colors.grey),
-                            title: Text(
-                              'Login / Signup',
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-                            ),
-                            trailing: Icon(
-                              CupertinoIcons.chevron_right,
-                              size: 13,
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
-                            ),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const AuthScreen(),
-                                ),
-                              );
-                            },
+                            title: Text('Login / Signup', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                            trailing: Icon(CupertinoIcons.chevron_right, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                            onTap: () => ref.read(isGuestModeProvider.notifier).state = false,
                           ),
                         ],
                       ]);
@@ -321,20 +275,20 @@ class SettingsScreen extends ConsumerWidget {
 
               _buildSection(context, 'About', [
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Center(
-                    child: Column(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          width: 64,
-                          height: 64,
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-                                blurRadius: 10,
-                                spreadRadius: 1,
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                                blurRadius: 8,
                               ),
                             ],
                           ),
@@ -346,52 +300,46 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Muzo',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Premium Music Client',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Muzo',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
+                            ),
+                            Text(
+                              'Premium Music Client',
+                              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
                 ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(FluentIcons.info_24_regular, Colors.grey),
-                  title: Text('Version', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500)),
-                  trailing: Text('v4.0', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 13)),
+                  title: Text('Version', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                  trailing: Text('v4.0', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 12)),
                 ),
                 ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(FluentIcons.person_24_regular, Colors.blue),
-                  title: Text('Developer', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500)),
-                  trailing: Text('Shashwat', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 13)),
+                  title: Text('Developer', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                  trailing: Text('Shashwat', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 12)),
                 ),
                 ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(FluentIcons.code_24_regular, Colors.black87),
-                  title: Text('Source Code', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500)),
-                  subtitle: Text('View on GitHub', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11)),
-                  trailing: Icon(
-                    CupertinoIcons.chevron_right,
-                    size: 13,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
-                  ),
-                  onTap: () {
-                    launchUrl(
-                      Uri.parse('https://github.com/Shashwat-CODING/Muzo'),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
+                  title: Text('Source Code', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                  subtitle: Text('View on GitHub', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                  trailing: Icon(CupertinoIcons.chevron_right, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                  onTap: () => launchUrl(Uri.parse('https://github.com/Shashwat-CODING/Muzo'), mode: LaunchMode.externalApplication),
                 ),
               ]),
 
@@ -406,49 +354,43 @@ class SettingsScreen extends ConsumerWidget {
   Widget _buildSection(BuildContext context, String title, List<Widget> children) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03);
-    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08);
+    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.07);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 8, bottom: 8),
+          padding: const EdgeInsets.only(left: 4, bottom: 6, top: 2),
           child: Text(
-            title,
+            title.toUpperCase(),
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
             ),
           ),
         ),
         ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: cardBorder,
-                  width: 1.0,
-                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cardBorder, width: 0.75),
               ),
               child: Material(
                 color: Colors.transparent,
                 clipBehavior: Clip.antiAlias,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 child: Column(
                   children: [
                     for (int i = 0; i < children.length; i++) ...[
                       children[i],
                       if (i < children.length - 1)
-                        Divider(
-                          height: 1,
-                          indent: 56,
-                          color: cardBorder,
-                        ),
+                        Divider(height: 1, indent: 50, color: cardBorder),
                     ],
                   ],
                 ),
@@ -456,7 +398,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -470,21 +412,21 @@ class SettingsScreen extends ConsumerWidget {
   ) {
     final isSelected = quality == currentQuality;
     return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       leading: _buildSettingIconBox(Icons.music_note_rounded, isSelected ? Colors.orange : Colors.grey),
       title: Text(
         title,
         style: TextStyle(
           color: isSelected ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          fontSize: 14,
+          fontSize: 13,
         ),
       ),
       trailing: isSelected
-          ? const Icon(FluentIcons.checkmark_24_regular, color: Colors.white, size: 18)
+          ? const Icon(FluentIcons.checkmark_24_regular, color: Colors.white, size: 16)
           : null,
-      onTap: () {
-        ref.read(settingsProvider.notifier).setAudioQuality(quality);
-      },
+      onTap: () => ref.read(settingsProvider.notifier).setAudioQuality(quality),
     );
   }
 

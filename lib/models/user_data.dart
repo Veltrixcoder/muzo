@@ -9,10 +9,22 @@ class Channel {
   Channel({required this.name, this.channelId, this.avatar});
 
   factory Channel.fromJson(Map<String, dynamic> json) {
+    String? parsedAvatar;
+    if (json['thumbnail'] != null) {
+      parsedAvatar = json['thumbnail']?.toString();
+    } else if (json['avatar'] != null) {
+      parsedAvatar = json['avatar']?.toString();
+    } else if (json['thumbnailUrl'] != null) {
+      parsedAvatar = json['thumbnailUrl']?.toString();
+    } else if (json['thumbnails'] is List && (json['thumbnails'] as List).isNotEmpty) {
+      final list = json['thumbnails'] as List;
+      parsedAvatar = list.last['url']?.toString();
+    }
+
     return Channel(
-      name: json['name']?.toString() ?? '',
-      channelId: json['channelId']?.toString(),
-      avatar: json['avatar']?.toString(),
+      name: (json['name'] ?? json['title'] ?? json['channelName'])?.toString() ?? '',
+      channelId: (json['browseId'] ?? json['channelId'] ?? json['id'])?.toString(),
+      avatar: parsedAvatar,
     );
   }
 
@@ -20,6 +32,12 @@ class Channel {
     'name': name,
     'channelId': channelId,
     'avatar': avatar,
+  };
+
+  Map<String, dynamic> toApiJson() => {
+    'browseId': channelId,
+    'name': name,
+    'thumbnail': avatar,
   };
 }
 
@@ -72,7 +90,7 @@ class UserData {
       stats: Stats.fromJson(json['stats'] ?? {}),
       history: (json['history'] as List?)?.map((e) => MuzoItem.fromJson(Map<String, dynamic>.from(e))).toList() ?? [],
       favorites: parseUniqueResults('favorites'),
-      subscriptions: parseUniqueChannels('subscriptions'),
+      subscriptions: json['followedArtists'] != null ? parseUniqueChannels('followedArtists') : parseUniqueChannels('subscriptions'),
       playlists:
           (json['playlists'] as List?)?.map((e) => Playlist.fromJson(Map<String, dynamic>.from(e))).toList() ?? [],
     );
@@ -125,7 +143,7 @@ class Stats {
     return Stats(
       historyCount: json['history_count'] ?? 0,
       favoritesCount: json['favorites_count'] ?? 0,
-      subscriptionsCount: json['subscriptions_count'] ?? 0,
+      subscriptionsCount: json['followed_artists_count'] ?? json['subscriptions_count'] ?? 0,
       playlistsCount: json['playlists_count'] ?? 0,
     );
   }

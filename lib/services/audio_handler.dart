@@ -438,6 +438,7 @@ class AudioHandler {
         'resultType': result.resultType,
         'lazy': true,
         'audioUrl': result.audioUrl,
+        'artistId': result.artists?.firstOrNull?.id,
       },
     );
 

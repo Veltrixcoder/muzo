@@ -22,6 +22,8 @@ import 'package:muzo/utils/page_routes.dart';
 import 'package:muzo/providers/search_provider.dart';
 import 'package:muzo/widgets/community_join_dialog.dart';
 
+final isSubRouteProvider = StateProvider<bool>((ref) => false);
+
 class MainLayout extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -36,6 +38,7 @@ class _MainLayoutState extends ConsumerState<MainLayout>
   late final ShareService _shareService;
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
+  late final _SubRouteObserver _routeObserver;
   
   @override
   bool get wantKeepAlive => true;
@@ -43,6 +46,7 @@ class _MainLayoutState extends ConsumerState<MainLayout>
   @override
   void initState() {
     super.initState();
+    _routeObserver = _SubRouteObserver(ref);
     final audioHandler = ref.read(audioHandlerProvider);
     _shareService = ShareService(audioHandler);
 
@@ -173,6 +177,7 @@ class _MainLayoutState extends ConsumerState<MainLayout>
     
     final nestedNavigator = Navigator(
       key: nestedNavigatorKey,
+      observers: [_routeObserver],
       onGenerateRoute: (settings) {
         return MaterialPageRoute(
           builder: (context) => widget.child,
@@ -213,7 +218,13 @@ class _MainLayoutState extends ConsumerState<MainLayout>
               Expanded(
                 child: Stack(
                   children: [
-                    nestedNavigator,
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 1100),
+                        child: nestedNavigator,
+                      ),
+                    ),
                     _buildLoadingOverlay(audioHandler),
                     _buildMiniPlayerPositioned(context, ref, isDesktop),
                     const FloatingSleepTimer(),
@@ -307,6 +318,8 @@ class _MainLayoutState extends ConsumerState<MainLayout>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
     final floatBottom = 12.0 + bottomPadding;
+    final isSubRoute = ref.watch(isSubRouteProvider);
+
     final isSearchActive = selectedIndex == 1;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     final showNavBar = (!keyboardVisible || isSearchActive);
@@ -321,136 +334,161 @@ class _MainLayoutState extends ConsumerState<MainLayout>
         opacity: showNavBar ? 1.0 : 0.0,
         child: IgnorePointer(
           ignoring: !showNavBar,
-          child: Row(
-            children: [
-              // Main pill: Home, Library, Settings OR Search input
-              Expanded(
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-                        blurRadius: 20,
-                        spreadRadius: -4,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
-                            width: 0.75,
-                          ),
-                        ),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          transitionBuilder: (child, animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: ScaleTransition(
-                                scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: isSearchActive
-                              ? _buildSearchTextField(context, ref)
-                              : _buildNavButtons(context, ref, selectedIndex),
-                        ),
-                      ),
-                    ),
-                  ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.98, end: 1.0).animate(animation),
+                  child: child,
                 ),
-              ),
-              const SizedBox(width: 10),
-              // Search circle / Home Button
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-                      blurRadius: 20,
-                      spreadRadius: -4,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        if (isSearchActive) {
-                          ref.read(navigationIndexProvider.notifier).state = 0; // Go to Home
-                        } else {
-                          ref.read(navigationIndexProvider.notifier).state = 1; // Search index
-                          nestedNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-                        }
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
-                            width: 0.75,
-                          ),
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                transitionBuilder: (child, animation) {
-                                  return ScaleTransition(
-                                    scale: animation,
-                                    child: FadeTransition(opacity: animation, child: child),
-                                  );
-                                },
-                                child: isSearchActive
-                                    ? Icon(
-                                        FluentIcons.home_24_regular,
-                                        key: const ValueKey('home_button_icon'),
-                                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                                        size: 18,
-                                      )
-                                    : Icon(
-                                        FluentIcons.search_24_regular,
-                                        key: const ValueKey('search_button_icon'),
-                                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                                        size: 18,
-                                      ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
+            child: isSubRoute
+                ? _buildSubRouteBottomNavBarContent(context, ref, isDark)
+                : _buildNormalBottomNavBarContent(context, ref, isDark, selectedIndex, isSearchActive),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNormalBottomNavBarContent(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    int selectedIndex,
+    bool isSearchActive,
+  ) {
+    return Row(
+      key: const ValueKey('normal_nav_bar'),
+      children: [
+        // Main pill: Home, Library, Settings OR Search input
+        Expanded(
+          child: Container(
+            height: 56,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                  blurRadius: 20,
+                  spreadRadius: -4,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
+                      width: 0.75,
+                    ),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: isSearchActive
+                        ? _buildSearchTextField(context, ref)
+                        : _buildNavButtons(context, ref, selectedIndex),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Search circle / Home Button
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                blurRadius: 20,
+                spreadRadius: -4,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  if (isSearchActive) {
+                    ref.read(navigationIndexProvider.notifier).state = 0; // Go to Home
+                  } else {
+                    ref.read(navigationIndexProvider.notifier).state = 1; // Search index
+                    nestedNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+                  }
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
+                      width: 0.75,
+                    ),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder: (child, animation) {
+                            return ScaleTransition(
+                              scale: animation,
+                              child: FadeTransition(opacity: animation, child: child),
+                            );
+                          },
+                          child: isSearchActive
+                              ? Icon(
+                                  FluentIcons.home_24_regular,
+                                  key: const ValueKey('home_button_icon'),
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                                  size: 18,
+                                )
+                              : Icon(
+                                  FluentIcons.search_24_regular,
+                                  key: const ValueKey('search_button_icon'),
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                                  size: 18,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -581,64 +619,71 @@ class _MainLayoutState extends ConsumerState<MainLayout>
   ) {
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bottomOffset = isDesktop
-        ? 16.0
-        : 76.0 + MediaQuery.of(context).viewPadding.bottom;
+        ? 12.0
+        : 72.0 + MediaQuery.of(context).viewPadding.bottom;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    final showMiniPlayer = !keyboardVisible;
+    final isSubRoute = ref.watch(isSubRouteProvider);
+    final showMiniPlayer = !keyboardVisible && !(isSubRoute && !isDesktop);
 
     return Positioned(
-      left: isDesktop ? 24 : 16,
-      right: isDesktop ? 24 : 16,
+      left: 0,
+      right: 0,
       bottom: bottomOffset,
       height: 50,
-      child: Consumer(
-        builder: (context, ref, _) {
-          final mediaItemAsync = ref.watch(currentMediaItemProvider);
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(maxWidth: isDesktop ? 1100 : double.infinity),
+          padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 16),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final mediaItemAsync = ref.watch(currentMediaItemProvider);
 
-          return mediaItemAsync.maybeWhen(
-            data: (mediaItem) {
-              if (mediaItem == null) return const SizedBox.shrink();
-              return AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: showMiniPlayer ? 1.0 : 0.0,
-                child: IgnorePointer(
-                  ignoring: !showMiniPlayer,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDarkTheme ? 0.35 : 0.12),
-                          blurRadius: 20,
-                          spreadRadius: -4,
-                          offset: const Offset(0, 8),
+              return mediaItemAsync.maybeWhen(
+                data: (mediaItem) {
+                  if (mediaItem == null) return const SizedBox.shrink();
+                  return AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: showMiniPlayer ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !showMiniPlayer,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(25),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDarkTheme ? 0.35 : 0.12),
+                              blurRadius: 20,
+                              spreadRadius: -4,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(25),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: (isDarkTheme ? Colors.black : Colors.white).withValues(alpha: isDarkTheme ? 0.20 : 0.35),
-                            borderRadius: BorderRadius.circular(25),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: isDarkTheme ? 0.12 : 0.20),
-                              width: 0.75,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(25),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: (isDarkTheme ? Colors.black : Colors.white).withValues(alpha: isDarkTheme ? 0.20 : 0.35),
+                                borderRadius: BorderRadius.circular(25),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: isDarkTheme ? 0.12 : 0.20),
+                                  width: 0.75,
+                                ),
+                              ),
+                              child: const MiniPlayer(),
                             ),
                           ),
-                          child: const MiniPlayer(),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
               );
             },
-            orElse: () => const SizedBox.shrink(),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -1021,5 +1066,187 @@ class _MainLayoutState extends ConsumerState<MainLayout>
     );
   }
 
+  Widget _buildSubRouteBottomNavBarContent(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    final mediaItemAsync = ref.watch(currentMediaItemProvider);
+    
+    return Row(
+      key: const ValueKey('sub_route_nav_bar'),
+      children: [
+        // Left: Home Circle
+        _buildCircleNavButton(
+          context,
+          ref,
+          icon: FluentIcons.home_24_regular,
+          isDark: isDark,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ref.read(navigationIndexProvider.notifier).state = 0; // Go to Home
+            nestedNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+          },
+        ),
+        const SizedBox(width: 10),
+        
+        // Middle: Miniplayer Pill
+        Expanded(
+          child: mediaItemAsync.maybeWhen(
+            data: (mediaItem) {
+              if (mediaItem == null) return const SizedBox.shrink();
+              return Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                      blurRadius: 20,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
+                          width: 0.75,
+                        ),
+                      ),
+                      child: const MiniPlayer(),
+                    ),
+                  ),
+                ),
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
+          ),
+        ),
+        const SizedBox(width: 10),
+        
+        // Right: Search Circle
+        _buildCircleNavButton(
+          context,
+          ref,
+          icon: FluentIcons.search_24_regular,
+          isDark: isDark,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ref.read(navigationIndexProvider.notifier).state = 1; // Go to Search
+            nestedNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+          },
+        ),
+      ],
+    );
+  }
 
+  Widget _buildCircleNavButton(
+    BuildContext context,
+    WidgetRef ref, {
+    required IconData icon,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+            blurRadius: 20,
+            spreadRadius: -4,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.20 : 0.35),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.20),
+                  width: 0.75,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  icon,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SubRouteObserver extends NavigatorObserver {
+  final WidgetRef ref;
+  int _routeCount = 0;
+  _SubRouteObserver(this.ref);
+
+  void _update() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(isSubRouteProvider.notifier).state = _routeCount > 1;
+    });
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    if (route is PageRoute) {
+      _routeCount++;
+      _update();
+    }
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    if (route is PageRoute) {
+      _routeCount--;
+      _update();
+    }
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    if (route is PageRoute) {
+      _routeCount--;
+      _update();
+    }
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    final oldIsPage = oldRoute is PageRoute;
+    final newIsPage = newRoute is PageRoute;
+    if (oldIsPage && !newIsPage) {
+      _routeCount--;
+      _update();
+    } else if (!oldIsPage && newIsPage) {
+      _routeCount++;
+      _update();
+    }
+  }
 }

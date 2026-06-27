@@ -282,33 +282,33 @@ class MuzoApiService {
   Future<void> addSubscription(Channel channel) async {
     final response = await _retryWithRefresh(
       () => _client.post(
-        Uri.parse('$_baseUrl/subscriptions'),
+        Uri.parse('$_baseUrl/follow'),
         headers: _headers,
-        body: jsonEncode(channel.toJson()),
+        body: jsonEncode(channel.toApiJson()),
       ),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Failed to subscribe');
+      throw Exception('Failed to follow artist');
     }
   }
 
   Future<void> removeSubscription(String browseId) async {
     final response = await _retryWithRefresh(
       () => _client.delete(
-        Uri.parse('$_baseUrl/subscriptions/$browseId'),
+        Uri.parse('$_baseUrl/follow/$browseId'),
         headers: _headers,
       ),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Failed to unsubscribe');
+      throw Exception('Failed to unfollow artist');
     }
   }
 
   Future<List<MuzoItem>> getTopOnMuzo() async {
     try {
-      final uri = Uri.parse('https://veltrixcode-ytify.hf.space/api/trending?limit=20');
+      final uri = Uri.parse('https://allnewuser-muzo.hf.space/api/trending?limit=20');
       debugPrint('TOP ON MUZO Request: $uri');
       final response = await _client.get(
         uri,
@@ -396,38 +396,56 @@ class MuzoApiService {
   }
 
   Future<List<MuzoItem>> getUpNext(String videoId) async {
-    try {
-      final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/related?videoId=$videoId');
-      debugPrint('UPNEXT API Request: $uri');
-      final response = await _client.get(
-        uri, 
-        headers: _ytHeaders,
-      );
-      debugPrint('UPNEXT API Response [${response.statusCode}]');
-      debugPrint('UPNEXT RAW DATA: ${response.body.substring(0, (response.body.length > 300) ? 300 : response.body.length)}');
+    final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/related?videoId=$videoId');
+    int retries = 3;
+    int attempt = 0;
 
-      if (response.statusCode != 200) {
-        debugPrint('UpNext API Error: ${response.statusCode}');
+    while (attempt < retries) {
+      attempt++;
+      try {
+        debugPrint('UPNEXT API Request (Attempt $attempt/$retries): $uri');
+        final response = await _client.get(
+          uri, 
+          headers: _ytHeaders,
+        ).timeout(const Duration(seconds: 15));
+
+        debugPrint('UPNEXT API Response [${response.statusCode}]');
+
+        if (response.statusCode != 200) {
+          debugPrint('UpNext API Error: ${response.statusCode}');
+          if (attempt < retries) {
+            await Future.delayed(Duration(seconds: attempt * 2));
+            continue;
+          }
+          return [];
+        }
+
+        final data = jsonDecode(response.body);
+        if (data['success'] != true) {
+          debugPrint('UPNEXT: success != true, data: $data');
+          if (attempt < retries) {
+            await Future.delayed(Duration(seconds: attempt * 2));
+            continue;
+          }
+          return [];
+        }
+
+        final List<dynamic>? list = data['songs'] as List?;
+        if (list == null) {
+          debugPrint('UPNEXT: songs key is null');
+          return [];
+        }
+        return list.map((e) => MuzoItem.fromJson(Map<String, dynamic>.from(e)..putIfAbsent('resultType', () => 'song'))).toList();
+      } catch (e) {
+        debugPrint('Error fetching Up Next (Attempt $attempt/$retries): $e');
+        if (attempt < retries) {
+          await Future.delayed(Duration(seconds: attempt * 2));
+          continue;
+        }
         return [];
       }
-
-      final data = jsonDecode(response.body);
-      debugPrint('UPNEXT data keys: ${(data as Map).keys.toList()}');
-      if (data['success'] != true) {
-        debugPrint('UPNEXT: success != true, data: $data');
-        return [];
-      }
-
-      final List<dynamic>? list = data['songs'] as List?;
-      if (list == null) {
-        debugPrint('UPNEXT: songs key is null');
-        return [];
-      }
-      return list.map((e) => MuzoItem.fromJson(Map<String, dynamic>.from(e)..putIfAbsent('resultType', () => 'song'))).toList();
-    } catch (e) {
-      debugPrint('Error fetching Up Next: $e');
-      return [];
     }
+    return [];
   }
   
   // --- Search & Related (from YouTubeApiService) ---

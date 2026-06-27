@@ -7,6 +7,10 @@ import 'package:muzo/widgets/result_tile.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:muzo/screens/playlist_screen.dart';
 import 'package:muzo/widgets/global_background.dart';
+import 'package:muzo/utils/page_routes.dart';
+import 'dart:ui';
+import 'package:muzo/services/storage_service.dart';
+import 'package:muzo/models/user_data.dart';
 
 class ArtistScreen extends ConsumerStatefulWidget {
   final String browseId;
@@ -115,15 +119,78 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                             bottom: 24,
                             left: 20,
                             right: 20,
-                            child: Text(
-                              displayName,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurface,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Consumer(
+                                  builder: (context, ref, _) {
+                                    final storage = ref.watch(storageServiceProvider);
+                                    final theme = Theme.of(context);
+                                    return ValueListenableBuilder<List<Channel>>(
+                                      valueListenable: storage.subscriptionsListenable,
+                                      builder: (context, subscriptions, _) {
+                                        final isFollowed = storage.isSubscribed(widget.browseId);
+                                        return SizedBox(
+                                          height: 32,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(16),
+                                            child: BackdropFilter(
+                                              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                                              child: TextButton(
+                                                onPressed: () {
+                                                  final channel = Channel(
+                                                    name: displayName,
+                                                    channelId: widget.browseId,
+                                                    avatar: displayThumbnail,
+                                                  );
+                                                  storage.toggleSubscription(channel);
+                                                },
+                                                style: TextButton.styleFrom(
+                                                  backgroundColor: isFollowed
+                                                      ? theme.colorScheme.onSurface
+                                                      : theme.colorScheme.onSurface.withValues(alpha: 0.08),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(16),
+                                                    side: BorderSide(
+                                                      color: isFollowed
+                                                          ? Colors.transparent
+                                                          : theme.colorScheme.onSurface.withValues(alpha: 0.15),
+                                                      width: 1.0,
+                                                    ),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  isFollowed ? 'Following' : 'Follow',
+                                                  style: TextStyle(
+                                                    color: isFollowed
+                                                        ? theme.colorScheme.surface
+                                                        : theme.colorScheme.onSurface,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -225,8 +292,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => PlaylistScreen(
+          SlidePageRoute(
+            page: PlaylistScreen(
               playlistId: playlist.browseId,
               title: playlist.title,
               thumbnailUrl: playlist.thumbnail,
@@ -288,8 +355,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => ArtistScreen(
+          SlidePageRoute(
+            page: ArtistScreen(
               browseId: artist.browseId,
               artistName: artist.name,
               thumbnailUrl: artist.thumbnail,

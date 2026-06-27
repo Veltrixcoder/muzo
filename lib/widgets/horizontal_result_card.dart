@@ -8,6 +8,7 @@ import 'package:muzo/providers/player_provider.dart';
 import 'package:muzo/screens/artist_screen.dart';
 import 'package:muzo/screens/playlist_screen.dart';
 import 'package:muzo/screens/channel_screen.dart';
+import 'package:muzo/utils/page_routes.dart';
 
 class HorizontalResultCard extends ConsumerWidget {
   final MuzoItem result;
@@ -35,8 +36,8 @@ class HorizontalResultCard extends ConsumerWidget {
             if (result.resultType == 'artist' && result.browseId != null) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => ArtistScreen(
+                SlidePageRoute(
+                  page: ArtistScreen(
                     browseId: result.browseId!,
                     artistName: result.title,
                     thumbnailUrl: result.thumbnails.lastOrNull?.url,
@@ -47,8 +48,8 @@ class HorizontalResultCard extends ConsumerWidget {
                 result.browseId != null) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => PlaylistScreen(
+                SlidePageRoute(
+                  page: PlaylistScreen(
                     playlistId: result.browseId!,
                     title: result.title,
                     thumbnailUrl: result.thumbnails.lastOrNull?.url,
@@ -59,8 +60,8 @@ class HorizontalResultCard extends ConsumerWidget {
                 result.browseId != null) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => ChannelScreen(
+                SlidePageRoute(
+                  page: ChannelScreen(
                     channelId: result.browseId!,
                     title: result.title,
                     thumbnailUrl: result.thumbnails.lastOrNull?.url,

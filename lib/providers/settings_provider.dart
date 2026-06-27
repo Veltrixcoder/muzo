@@ -11,6 +11,7 @@ class SettingsState {
   final bool isGestureMode;
   final String appFontFamily;
   final bool isAmoled;
+  final bool showTopOnMuzo;
 
   SettingsState({
     required this.audioQuality,
@@ -18,6 +19,7 @@ class SettingsState {
     this.isGestureMode = false,
     this.appFontFamily = 'Karst',
     this.isAmoled = false,
+    this.showTopOnMuzo = true,
   });
 
   SettingsState copyWith({
@@ -26,6 +28,7 @@ class SettingsState {
     bool? isGestureMode,
     String? appFontFamily,
     bool? isAmoled,
+    bool? showTopOnMuzo,
   }) {
     return SettingsState(
       audioQuality: audioQuality ?? this.audioQuality,
@@ -33,6 +36,7 @@ class SettingsState {
       isGestureMode: isGestureMode ?? this.isGestureMode,
       appFontFamily: appFontFamily ?? this.appFontFamily,
       isAmoled: isAmoled ?? this.isAmoled,
+      showTopOnMuzo: showTopOnMuzo ?? this.showTopOnMuzo,
     );
   }
 }
@@ -46,6 +50,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
           isGestureMode: false,
           appFontFamily: 'Karst',
           isAmoled: false,
+          showTopOnMuzo: true,
         ),
       ) {
     _loadSettings();
@@ -58,6 +63,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     final isGestureMode = box.get('isGestureMode', defaultValue: false) ?? false;
     final appFontFamily = box.get('appFontFamily', defaultValue: 'Karst');
     final isAmoled = box.get('isAmoled', defaultValue: false) ?? false;
+    final showTopOnMuzo = box.get('showTopOnMuzo', defaultValue: true) ?? true;
 
     // Migration logic: If saved index is out of bounds, default to auto (0)
     final validThemeIndex =
@@ -71,6 +77,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       isGestureMode: isGestureMode,
       appFontFamily: appFontFamily,
       isAmoled: isAmoled,
+      showTopOnMuzo: showTopOnMuzo,
     );
   }
 
@@ -103,6 +110,12 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     state = state.copyWith(isAmoled: enabled);
     final box = await Hive.openBox('settings');
     await box.put('isAmoled', enabled);
+  }
+
+  Future<void> setShowTopOnMuzo(bool enabled) async {
+    state = state.copyWith(showTopOnMuzo: enabled);
+    final box = await Hive.openBox('settings');
+    await box.put('showTopOnMuzo', enabled);
   }
 }
 

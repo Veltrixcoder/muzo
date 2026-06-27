@@ -9,6 +9,7 @@ import 'package:muzo/screens/playlist_screen.dart';
 import 'package:muzo/screens/playlist_details_screen.dart';
 import 'package:muzo/screens/artist_screen.dart';
 import 'package:muzo/services/storage_service.dart';
+import 'package:muzo/utils/page_routes.dart';
 
 class RectHomeItem extends ConsumerWidget {
   final MuzoItem item;
@@ -33,16 +34,15 @@ class RectHomeItem extends ConsumerWidget {
           if (localPlaylists.contains(title)) {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    PlaylistDetailsScreen(playlistName: title),
+              SlidePageRoute(
+                page: PlaylistDetailsScreen(playlistName: title),
               ),
             );
           } else if (idToUse != null) {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => PlaylistScreen(
+              SlidePageRoute(
+                page: PlaylistScreen(
                   playlistId: idToUse,
                   title: item.title,
                   thumbnailUrl: item.thumbnails.isNotEmpty
@@ -57,8 +57,8 @@ class RectHomeItem extends ConsumerWidget {
         } else if (item.resultType == 'artist' && item.browseId != null) {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => ArtistScreen(
+            SlidePageRoute(
+              page: ArtistScreen(
                 browseId: item.browseId!,
                 artistName: item.title,
                 thumbnailUrl: item.thumbnails.isNotEmpty

@@ -237,7 +237,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           centerTitle: true,
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 160),
           child: Column(
             children: [
               // Avatar + Name header
@@ -245,11 +245,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               
               // Stats Grid
               if (_stats != null) ...[
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 _buildStatsGrid(_stats!),
               ],
               
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
     
               // Personal Info card
               _buildSection(
@@ -261,7 +261,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     icon: FluentIcons.person_24_regular,
                     isDark: isDark,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _buildTextField(
                     controller: _emailController,
                     label: 'Email',
@@ -269,11 +269,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     isDark: isDark,
                     keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
                   _buildSaveButton(),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
     
               // Security card
               if (_user?.hasPassword ?? false) ...[
@@ -287,7 +287,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isDark: isDark,
                       obscureText: true,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
                     _buildTextField(
                       controller: _newPasswordController,
                       label: 'New Password',
@@ -295,11 +295,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isDark: isDark,
                       obscureText: true,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     _buildChangePasswordButton(),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
               ],
 
               // Connected Accounts card
@@ -354,7 +354,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     color: Colors.redAccent,
                     onTap: _confirmClearHistory,
                   ),
-                  Divider(height: 24, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1)),
+                  Divider(height: 16, color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08)),
                   _buildActionRow(
                     icon: Icons.logout_rounded,
                     title: 'Logout',
@@ -378,19 +378,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Stack(
           children: [
             Container(
-              width: 100,
-              height: 100,
+              width: 76,
+              height: 76,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.1),
-                  width: 3,
+                  color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+                  width: 2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).primaryColor.withValues(alpha: 0.2),
-                    blurRadius: 25,
-                    spreadRadius: 2,
+                    color: Theme.of(context).primaryColor.withValues(alpha: 0.15),
+                    blurRadius: 16,
+                    spreadRadius: 1,
                   ),
                 ],
               ),
@@ -460,22 +460,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Text(
           _user?.username ?? 'User',
           style: TextStyle(
-            fontSize: 22,
+            fontSize: 18,
             fontWeight: FontWeight.w700,
             color: Theme.of(context).colorScheme.onSurface,
-            letterSpacing: -0.5,
+            letterSpacing: -0.4,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           _user?.email ?? '',
           style: TextStyle(
-            fontSize: 14,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -487,11 +487,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Row(
       children: [
         Expanded(child: _buildStatItem('Playlists', stats.playlistsCount, FluentIcons.music_note_2_24_regular)),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(child: _buildStatItem('Favorites', stats.favoritesCount, FluentIcons.heart_24_regular)),
-        const SizedBox(width: 8),
-        Expanded(child: _buildStatItem('Channels', stats.subscriptionsCount, FluentIcons.person_24_regular)),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
+        Expanded(child: _buildStatItem('Followed', stats.subscriptionsCount, FluentIcons.person_24_regular)),
+        const SizedBox(width: 6),
         Expanded(child: _buildStatItem('History', stats.historyCount, FluentIcons.history_24_regular)),
       ],
     );
@@ -500,39 +500,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildStatItem(String label, int value, IconData icon) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03);
-    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08);
+    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.07);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           decoration: BoxDecoration(
             color: cardBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cardBorder,
-              width: 1.0,
-            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cardBorder, width: 0.75),
           ),
           child: Column(
             children: [
-              Icon(icon, size: 18, color: Theme.of(context).primaryColor),
-              const SizedBox(height: 6),
+              Icon(icon, size: 16, color: Theme.of(context).primaryColor),
+              const SizedBox(height: 4),
               Text(
                 '$value',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 9.5,
                   color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                   fontWeight: FontWeight.w500,
                 ),
@@ -547,42 +544,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildSection(String title, List<Widget> children) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03);
-    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08);
+    final cardBorder = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.07);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 8, bottom: 8),
+          padding: const EdgeInsets.only(left: 4, bottom: 6, top: 2),
           child: Text(
-            title,
+            title.toUpperCase(),
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
             ),
           ),
         ),
         ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: cardBorder,
-                  width: 1.0,
-                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cardBorder, width: 0.75),
               ),
               child: Material(
                 color: Colors.transparent,
                 clipBehavior: Clip.antiAlias,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: children,
@@ -649,47 +643,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 46,
+      height: 40,
       child: FilledButton(
         onPressed: _isLoading ? null : _updateProfile,
         style: FilledButton.styleFrom(
           backgroundColor: onSurfaceColor,
           foregroundColor: surfaceColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
           elevation: 0,
         ),
         child: _isLoading 
             ? SizedBox(
-                height: 18, 
-                width: 18, 
+                height: 16, 
+                width: 16, 
                 child: CircularProgressIndicator(strokeWidth: 2, color: surfaceColor),
               )
-            : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
       ),
     );
   }
  
   Widget _buildChangePasswordButton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderCol = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08);
+    final borderCol = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.07);
 
     return SizedBox(
       width: double.infinity,
-      height: 46,
+      height: 40,
       child: OutlinedButton(
         onPressed: _isLoading ? null : _changePassword,
         style: OutlinedButton.styleFrom(
           foregroundColor: Theme.of(context).colorScheme.onSurface,
           side: BorderSide(color: borderCol),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
         ),
         child: _isLoading
             ? SizedBox(
-                height: 18,
-                width: 18,
+                height: 16,
+                width: 16,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onSurface),
               )
-            : const Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            : const Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
       ),
     );
   }
@@ -704,31 +698,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(7),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: color, size: 17),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
                   color: color,
                   fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
             ),
             Icon(
               CupertinoIcons.chevron_right,
-              size: 14,
+              size: 12,
               color: color.withValues(alpha: 0.5),
             ),
           ],

@@ -299,7 +299,7 @@ class MuzoArtist {
   factory MuzoArtist.fromJson(Map<String, dynamic> json) {
     return MuzoArtist(
       name: json['name']?.toString() ?? '',
-      id: json['id']?.toString(),
+      id: (json['id'] ?? json['browseId'])?.toString(),
     );
   }
 

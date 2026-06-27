@@ -27,7 +27,7 @@ class MusicApiService {
     _auth = AuthService(_storage);
   }
 
-  static const String _baseUrl = 'https://veltrixcode-ytify.hf.space/api';
+  static const String _baseUrl = 'https://allnewuser-muzo.hf.space/api';
 
   Map<String, String> get _headers {
     final token = _storage.authToken;

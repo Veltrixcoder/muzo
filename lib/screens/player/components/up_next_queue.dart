@@ -6,6 +6,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:muzo/providers/player_provider.dart';
 import 'package:muzo/widgets/glass_snackbar.dart';
+import 'package:muzo/models/muzo_item.dart';
+import 'package:muzo/widgets/song_options_menu.dart';
 
 class UpNextQueue extends ConsumerWidget {
   final Function(int, int) onReorderStart;
@@ -100,6 +102,28 @@ class UpNextQueue extends ConsumerWidget {
                           },
                           onRemove: () =>
                               audioHandler.removeQueueItem(index),
+                          onLongPress: () {
+                            final result = MuzoItem(
+                              videoId: mediaItem.id,
+                              title: mediaItem.title,
+                              thumbnails: [
+                                MuzoThumbnail(
+                                  url: mediaItem.artUri?.toString() ?? '',
+                                  width: 0,
+                                  height: 0,
+                                ),
+                              ],
+                              artists: [
+                                MuzoArtist(
+                                  name: mediaItem.artist ?? '',
+                                  id: mediaItem.extras?['artistId'] ?? '',
+                                ),
+                              ],
+                              resultType: mediaItem.extras?['resultType'] ?? 'video',
+                              isExplicit: false,
+                            );
+                            SongOptionsMenu.show(context, ref, result);
+                          },
                         );
                       },
                       onReorder: (oldIndex, newIndex) {
@@ -201,6 +225,7 @@ class _QueueTile extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
   final VoidCallback onRemove;
+  final VoidCallback? onLongPress;
 
   const _QueueTile({
     super.key,
@@ -211,6 +236,7 @@ class _QueueTile extends StatelessWidget {
     required this.isDark,
     required this.onTap,
     required this.onRemove,
+    this.onLongPress,
   });
 
   @override
@@ -234,6 +260,7 @@ class _QueueTile extends StatelessWidget {
       onDismissed: (_) => onRemove(),
       child: GestureDetector(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.symmetric(vertical: 4),

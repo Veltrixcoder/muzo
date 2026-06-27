@@ -138,10 +138,10 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
             children: [
               // Premium Frosted Header and Search Bar
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
                 child: GlassContainer(
-                  borderRadius: BorderRadius.circular(16),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  borderRadius: BorderRadius.circular(14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -150,40 +150,40 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                           Icon(
                             FluentIcons.people_community_24_regular,
                             color: theme.primaryColor,
-                            size: 24,
+                            size: 20,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Community Feed',
+                              'Community',
                               style: TextStyle(
                                 color: cs.onSurface,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.5,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Container(
-                        height: 40,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: cs.onSurface.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(9),
                         ),
                         child: TextField(
                           controller: _searchController,
                           focusNode: _searchFocusNode,
                           onChanged: _onSearchChanged,
-                          style: TextStyle(color: cs.onSurface, fontSize: 14),
+                          style: TextStyle(color: cs.onSurface, fontSize: 13),
                           cursorColor: theme.primaryColor,
                           decoration: InputDecoration(
                             hintText: 'Search community music...',
                             hintStyle: TextStyle(
                               color: cs.onSurface.withValues(alpha: 0.4),
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w400,
                             ),
                             filled: false,
@@ -194,13 +194,13 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                               padding: const EdgeInsets.only(left: 0, right: 8),
                               child: Icon(
                                 FluentIcons.search_24_regular,
-                                color: cs.onSurface.withValues(alpha: 0.6),
-                                size: 18,
+                                color: cs.onSurface.withValues(alpha: 0.5),
+                                size: 16,
                               ),
                             ),
                             prefixIconConstraints: const BoxConstraints(
-                              minWidth: 36,
-                              minHeight: 18,
+                              minWidth: 34,
+                              minHeight: 16,
                             ),
                             suffixIcon: ValueListenableBuilder<TextEditingValue>(
                               valueListenable: _searchController,
@@ -209,13 +209,13 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                                 return IconButton(
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(
-                                    minWidth: 28,
-                                    minHeight: 28,
+                                    minWidth: 26,
+                                    minHeight: 26,
                                   ),
                                   icon: Icon(
                                     FluentIcons.dismiss_circle_24_filled,
                                     color: cs.onSurface.withValues(alpha: 0.4),
-                                    size: 16,
+                                    size: 15,
                                   ),
                                   onPressed: () {
                                     _searchController.clear();
@@ -225,7 +225,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                                 );
                               },
                             ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 6),
                           ),
                         ),
                       ),

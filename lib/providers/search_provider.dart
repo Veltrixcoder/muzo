@@ -54,12 +54,30 @@ class SearchResultsNotifier
     try {
       if (filter == 'all') {
         final futures = [
-          _api.search(query, filter: 'songs').then((res) => res.results.map((r) => r.copyWith(category: 'Songs')).toList()),
-          _api.search(query, filter: 'videos').then((res) => res.results.map((r) => r.copyWith(category: 'Videos')).toList()),
-          _api.search(query, filter: 'albums').then((res) => res.results.map((r) => r.copyWith(category: 'Albums')).toList()),
-          _api.search(query, filter: 'artists').then((res) => res.results.map((r) => r.copyWith(category: 'Artists')).toList()),
-          _api.search(query, filter: 'playlists').then((res) => res.results.map((r) => r.copyWith(category: 'Playlists')).toList()),
-          _api.search(query, filter: 'channels').then((res) => res.results.map((r) => r.copyWith(category: 'Channels')).toList()),
+          _api.search(query, filter: 'songs').then((res) => res.results.map((r) => r.copyWith(category: 'Songs')).toList()).catchError((e) {
+            debugPrint('Search songs error: $e');
+            return <MuzoItem>[];
+          }),
+          _api.search(query, filter: 'videos').then((res) => res.results.map((r) => r.copyWith(category: 'Videos')).toList()).catchError((e) {
+            debugPrint('Search videos error: $e');
+            return <MuzoItem>[];
+          }),
+          _api.search(query, filter: 'albums').then((res) => res.results.map((r) => r.copyWith(category: 'Albums')).toList()).catchError((e) {
+            debugPrint('Search albums error: $e');
+            return <MuzoItem>[];
+          }),
+          _api.search(query, filter: 'artists').then((res) => res.results.map((r) => r.copyWith(category: 'Artists')).toList()).catchError((e) {
+            debugPrint('Search artists error: $e');
+            return <MuzoItem>[];
+          }),
+          _api.search(query, filter: 'playlists').then((res) => res.results.map((r) => r.copyWith(category: 'Playlists')).toList()).catchError((e) {
+            debugPrint('Search playlists error: $e');
+            return <MuzoItem>[];
+          }),
+          _api.search(query, filter: 'channels').then((res) => res.results.map((r) => r.copyWith(category: 'Channels')).toList()).catchError((e) {
+            debugPrint('Search channels error: $e');
+            return <MuzoItem>[];
+          }),
         ];
         final resultsArray = await Future.wait(futures);
         _continuationToken = null;

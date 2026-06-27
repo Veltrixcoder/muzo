@@ -11,11 +11,11 @@ final authServiceProvider = ChangeNotifierProvider<AuthService>((ref) {
 
 class AuthService extends ChangeNotifier {
   final StorageService _storage;
-  static const String _baseUrl = 'https://veltrixcode-ytify.hf.space/api/auth';
+  static const String _baseUrl = 'https://allnewuser-muzo.hf.space/api/auth';
   // Installed/Desktop client ID (used for iOS/macOS clientId)
-  static const String _googleClientId = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+  static const String _googleClientId = '1023316916513-gf1k3aqschlblasfafsl0bs4mcc1ebcn.apps.googleusercontent.com';
   // Web OAuth client ID — required for Android to generate idToken
-  static const String _googleWebClientId = 'YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com';
+  static const String _googleWebClientId = '1023316916513-0ceeamcb82h4c5j27p7pnrbq0fl9udhd.apps.googleusercontent.com';
 
   late final GoogleSignIn _googleSignIn = GoogleSignIn(
     // clientId is only needed for iOS/macOS/Web. Android resolves identity via SHA-1 + package name.

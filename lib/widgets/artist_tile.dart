@@ -11,11 +11,13 @@ import 'package:muzo/utils/page_routes.dart';
 class ArtistTile extends ConsumerStatefulWidget {
   final String artistName;
   final String artistId;
+  final String? avatarUrl;
 
   const ArtistTile({
     super.key,
     required this.artistName,
     required this.artistId,
+    this.avatarUrl,
   });
 
   @override
@@ -31,14 +33,27 @@ class _ArtistTileState extends ConsumerState<ArtistTile> {
   void initState() {
     super.initState();
     _navChannelId = widget.artistId;
+    _avatarUrl = widget.avatarUrl;
     _fetchAvatar();
+  }
+
+  @override
+  void didUpdateWidget(ArtistTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.artistId != widget.artistId ||
+        oldWidget.artistName != widget.artistName) {
+      _navChannelId = widget.artistId;
+      _avatarUrl = widget.avatarUrl;
+      _fetchAvatar();
+    }
   }
 
   Future<void> _fetchAvatar() async {
     final storage = ref.read(storageServiceProvider);
 
-    // Check cache first
-    final cachedUrl = storage.getArtistImage(widget.artistName);
+    // Cache is keyed by artistId
+    final cacheKey = widget.artistId.isNotEmpty ? widget.artistId : widget.artistName;
+    final cachedUrl = storage.getArtistImage(cacheKey);
     if (cachedUrl != null) {
       if (mounted) {
         setState(() {
@@ -55,18 +70,17 @@ class _ArtistTileState extends ConsumerState<ArtistTile> {
         if (_navChannelId.isNotEmpty) {
           final details = await _muzoService.getArtistDetails(_navChannelId);
           if (mounted && details != null && details.artistAvatar.isNotEmpty) {
+            final highResUrl = details.artistAvatar.replaceAll(
+              RegExp(r'=[sw]\d+(-h\d+)?'),
+              '=s800',
+            );
             setState(() {
-              // Try to get high-res image
-              final highResUrl = details.artistAvatar.replaceAll(
-                RegExp(r'=[sw]\d+(-h\d+)?'),
-                '=s800',
-              );
               _avatarUrl = highResUrl;
-              storage.setArtistImage(widget.artistName, highResUrl);
+              storage.setArtistImage(_navChannelId, highResUrl);
             });
           }
         } else {
-          // Fallback if we only have the artistName (rare but possible)
+          // Fallback: search by artistName
           final _apiService = ref.read(muzoApiServiceProvider);
           final response = await _apiService.search(
             widget.artistName,
@@ -74,6 +88,7 @@ class _ArtistTileState extends ConsumerState<ArtistTile> {
           );
           if (mounted && response.results.isNotEmpty) {
             final result = response.results.first;
+            final newChannelId = result.browseId ?? '';
             setState(() {
               if (result.thumbnails.isNotEmpty) {
                 final highResUrl = result.thumbnails.last.url.replaceAll(
@@ -81,10 +96,11 @@ class _ArtistTileState extends ConsumerState<ArtistTile> {
                   '=s800',
                 );
                 _avatarUrl = highResUrl;
-                storage.setArtistImage(widget.artistName, highResUrl);
+                final cacheKey = newChannelId.isNotEmpty ? newChannelId : widget.artistName;
+                storage.setArtistImage(cacheKey, highResUrl);
               }
-              if (_navChannelId.isEmpty && result.browseId != null) {
-                _navChannelId = result.browseId!;
+              if (_navChannelId.isEmpty && newChannelId.isNotEmpty) {
+                _navChannelId = newChannelId;
               }
             });
           }

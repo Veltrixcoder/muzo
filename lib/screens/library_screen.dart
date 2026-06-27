@@ -18,8 +18,8 @@ import 'package:muzo/utils/page_routes.dart';
 import 'package:muzo/widgets/spotify_import_dialog.dart';
 import 'package:muzo/providers/navigation_provider.dart';
 import 'package:muzo/screens/user_tracks_screen.dart';
-import 'package:muzo/screens/auth_screen.dart';
 import 'package:muzo/services/auth_service.dart';
+import 'package:muzo/providers/auth_gate_provider.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -53,7 +53,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildAppBar(BuildContext context, StorageService storage) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: Row(
           children: [
             // User Avatar
@@ -69,51 +69,57 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                       width: 1.0,
                     ),
                   ),
                   child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+                    radius: 14,
+                    backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
                     child: ClipOval(
                       child: isSvg && cachedSvg != null
-                          ? SvgPicture.string(cachedSvg, height: 32, width: 32, fit: BoxFit.cover)
+                          ? SvgPicture.string(cachedSvg, height: 28, width: 28, fit: BoxFit.cover)
                           : avatarUrl != null && !isSvg
                               ? CachedNetworkImage(
                                   imageUrl: avatarUrl,
-                                  height: 32, width: 32, fit: BoxFit.cover,
+                                  height: 28, width: 28, fit: BoxFit.cover,
                                   errorWidget: (_, __, ___) => Icon(
                                     FluentIcons.person_24_regular,
                                     color: Theme.of(context).colorScheme.onSurface,
-                                    size: 20,
+                                    size: 16,
                                   ),
                                 )
                               : Icon(
                                   FluentIcons.person_24_regular,
                                   color: Theme.of(context).colorScheme.onSurface,
-                                  size: 20,
+                                  size: 16,
                                 ),
                     ),
                   ),
                 );
               },
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Text(
-              'Your Library',
+              'Library',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
+                letterSpacing: -0.3,
               ),
             ),
             const Spacer(),
-            IconButton(
-              onPressed: () => _showCreatePlaylistDialog(context, storage),
-              icon: Icon(FluentIcons.add_24_regular, color: Theme.of(context).colorScheme.onSurface),
-              style: IconButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => _showCreatePlaylistDialog(context, storage),
+                icon: Icon(FluentIcons.add_24_regular, color: Theme.of(context).colorScheme.onSurface, size: 18),
+                style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+                ),
               ),
             ),
           ],
@@ -126,15 +132,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return SliverToBoxAdapter(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Row(
           children: [
             _buildFilterChip('All'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildFilterChip('Playlists'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildFilterChip('Artists'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildFilterChip('Downloaded'),
           ],
         ),
@@ -160,7 +166,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return GestureDetector(
       onTap: () {
         if (selectedFilter == label) {
-          ref.read(libraryFilterProvider.notifier).state = 'All'; // Toggle off
+          ref.read(libraryFilterProvider.notifier).state = 'All';
         } else {
           ref.read(libraryFilterProvider.notifier).state = label;
         }
@@ -170,16 +176,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: chipBgColor,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: chipBorderColor,
-                width: 1,
-              ),
+              border: Border.all(color: chipBorderColor, width: 0.75),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -189,17 +192,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   label,
                   style: TextStyle(
                     color: chipTextColor,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (isSelected && label != 'All') ...[
                   const SizedBox(width: 4),
-                  Icon(
-                    CupertinoIcons.xmark,
-                    size: 11,
-                    color: chipTextColor,
-                  ),
+                  Icon(CupertinoIcons.xmark, size: 10, color: chipTextColor),
                 ],
               ],
             ),
@@ -578,48 +577,45 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
       onTap: onTap,
       leading: Container(
-        width: 32,
-        height: 32,
+        width: 30,
+        height: 30,
         decoration: BoxDecoration(
           color: iconBgColor,
           borderRadius: BorderRadius.circular(8),
         ),
         child: isLoading
             ? const Padding(
-                padding: EdgeInsets.all(8.0),
+                padding: EdgeInsets.all(7.0),
                 child: CircularProgressIndicator(
                   color: Colors.white,
                   strokeWidth: 2,
                 ),
               )
-            : Icon(
-                icon,
-                color: Colors.white,
-                size: 18,
-              ),
+            : Icon(icon, color: Colors.white, size: 16),
       ),
       title: Text(
         title,
         style: TextStyle(
           color: Theme.of(context).colorScheme.onSurface,
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
         style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-          fontSize: 11,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+          fontSize: 10.5,
         ),
       ),
       trailing: Icon(
         CupertinoIcons.chevron_right,
-        size: 13,
-        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+        size: 12,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
       ),
     );
   }
@@ -668,32 +664,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Add the "Import from Spotify" tile
       list.add(
         ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
           leading: Container(
-            width: 46,
-            height: 46,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               color: const Color(0xFF1DB954).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(FluentIcons.arrow_import_24_filled, color: Color(0xFF1DB954), size: 22),
+            child: const Icon(FluentIcons.arrow_import_24_filled, color: Color(0xFF1DB954), size: 16),
           ),
           title: Text(
             'Import from Spotify',
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              fontSize: 15,
+              fontSize: 13,
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           subtitle: const Text(
             'Add playlists via URL',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
+            style: TextStyle(fontSize: 10.5, color: Colors.grey),
           ),
           trailing: Icon(
             CupertinoIcons.chevron_right,
-            size: 13,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+            size: 12,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
           ),
           onTap: () {
             showDialog(
@@ -705,33 +702,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       );
     }
 
-    // 3. Artists (from History)
+    // 3. Artists (Followed Artists)
     if (showArtists) {
-      final history = storage.getHistory();
-      final Set<String> processedArtistNames = {};
-
-      for (final song in history) {
-        if (song.artists != null) {
-          for (final artist in song.artists!) {
-            final name = artist.name.trim();
-            if (name.isEmpty || name == 'Unknown') continue;
-            if (name.contains(',') ||
-                name.contains('&') ||
-                name.toLowerCase().contains(' feat ') ||
-                name.toLowerCase().contains(' ft ')) {
-              continue;
-            }
-            if (!processedArtistNames.contains(name)) {
-              processedArtistNames.add(name);
-              final artistId = (artist.id != null && artist.id!.isNotEmpty)
-                  ? artist.id!
-                  : '';
-              list.add(
-                ArtistTile(artistName: name, artistId: artistId),
-              );
-            }
-          }
-        }
+      final subscriptions = storage.getSubscriptions();
+      for (final sub in subscriptions) {
+        list.add(
+          ArtistTile(
+            key: ValueKey(sub.channelId ?? sub.name),
+            artistName: sub.name,
+            artistId: sub.channelId ?? '',
+            avatarUrl: sub.avatar,
+          ),
+        );
       }
     }
 
@@ -815,10 +797,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         TextButton(
           onPressed: () {
             Navigator.pop(dialogContext); // Close dialog using dialogContext
-            Navigator.push(
-              context, // Navigate outer screen using original context
-              MaterialPageRoute(builder: (_) => const AuthScreen()),
-            );
+            ref.read(isGuestModeProvider.notifier).state = false;
           },
           child: Text(
             'Sign In',
