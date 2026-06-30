@@ -11,7 +11,6 @@ import 'package:muzo/models/muzo_item.dart';
 import 'package:muzo/providers/player_provider.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:widget_marquee/widget_marquee.dart';
 import 'package:muzo/services/storage_service.dart';
 import 'package:muzo/widgets/glass_snackbar.dart';
@@ -47,12 +46,14 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
           height: 0,
         ),
       ],
-      artists: [
-        MuzoArtist(
-          name: mediaItem.artist ?? '',
-          id: mediaItem.extras?['artistId'] ?? '',
-        ),
-      ],
+      artists: (mediaItem.artist ?? '')
+          .split(RegExp(r'\s*,\s*'))
+          .map((name) => MuzoArtist(
+                name: name.trim(),
+                id: mediaItem.extras?['artistId'] ?? '',
+              ))
+          .where((a) => a.name.isNotEmpty)
+          .toList(),
       resultType: mediaItem.extras?['resultType'] ?? 'video',
       isExplicit: false,
     );
@@ -95,6 +96,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
   }
 
   Future<void> _fetchLyrics(MediaItem mediaItem) async {
+    debugPrint('standard_player: _fetchLyrics: mediaItem.title="${mediaItem.title}", mediaItem.artist="${mediaItem.artist}", mediaItem.extras=${mediaItem.extras}');
     final cachedTitle = ref.read(cachedLyricsTitleProvider);
     if (cachedTitle == mediaItem.title) return;
     if (_isLoadingLyrics) return;
@@ -111,6 +113,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
             mediaItem.duration?.inSeconds ??
                 ref.read(audioHandlerProvider).player.duration?.inSeconds ??
                 0,
+            videoId: mediaItem.id,
           );
       if (mounted) {
         ref.read(cachedLyricsProvider.notifier).state = lyrics;
@@ -170,132 +173,120 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
     }
     if (playerArtImageSize < 150) playerArtImageSize = 150; // Safeguard
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tintColor = isDark ? Colors.black : Colors.white;
-
-    final backgroundStack = Stack(
-      children: [
-        if (artUri != null)
-          SizedBox.expand(
+    final backgroundStack = artUri != null
+        ? SizedBox.expand(
             child: CachedNetworkImage(
-              imageUrl: artUri.toString(),
+              imageUrl: artUri.toString().replaceAll(RegExp(r'w\d+-h\d+'), 'w400-h400'),
               fit: BoxFit.cover,
-              height: MediaQuery.of(context).size.height,
-              placeholder: (context, url) => Container(color: isDark ? Colors.black : Colors.white),
-              errorWidget: (context, url, error) => Container(color: isDark ? Colors.black : Colors.white),
+              placeholder: (context, url) => const SizedBox.shrink(),
+              errorWidget: (context, url, error) => const ColoredBox(color: Colors.black54),
             ),
-          ),
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                tintColor.withValues(alpha: isDark ? 0.15 : 0.3),
-                tintColor.withValues(alpha: isDark ? 0.70 : 0.85),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+          )
+        : const ColoredBox(color: Colors.black54);
+
+
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Dynamic Blurred background
+          // Dynamic Blurred background — full screen
+          // Scaled up to 1.2x to push the blurred edges (which fade to transparent) completely off-screen,
+          // preventing the underlying background color from bleeding in at the edges.
           Positioned.fill(
             child: ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
-              child: backgroundStack,
+              child: Transform.scale(
+                scale: 1.2,
+                child: backgroundStack,
+              ),
             ),
           ),
 
-          // Main contents
-          SafeArea(
-            bottom: false,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isLandscape = size.width > size.height;
-                final isTabletOrDesktop = size.shortestSide >= 600;
+          // Main contents — NOT wrapped in SafeArea so portrait art is edge-to-edge
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isLandscape = size.width > size.height;
+              final isTabletOrDesktop = size.shortestSide >= 600;
 
-                if (isTabletOrDesktop || isLandscape) {
-                  return _buildDesktopLayout(context, ref, mediaItem);
-                } else {
-                  // Portrait page structure
-                  return Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: (_) {
-                      _resetLyricsInactivityTimer();
-                    },
-                    child: Stack(
-                      children: [
-                        // Swipeable PageView
-                        Positioned.fill(
-                          child: PageView(
-                            controller: _pageController,
-                            physics: const NeverScrollableScrollPhysics(),
-                            onPageChanged: (page) {
-                              setState(() {
-                                _currentPage = page;
-                                if (page != 0) {
-                                  _isLyricsExpanded = false;
-                                  _lyricsInactivityTimer?.cancel();
-                                } else {
-                                  _startLyricsInactivityTimer();
-                                }
-                              });
-                            },
-                            children: [
-                              _buildLyricsPage(context, ref, mediaItem),
-                              _buildMainPage(context, ref, mediaItem, playerArtImageSize),
-                              _buildQueuePage(context, ref, mediaItem),
-                            ],
-                          ),
+              if (isTabletOrDesktop || isLandscape) {
+                return SafeArea(
+                  bottom: false,
+                  child: _buildDesktopLayout(context, ref, mediaItem),
+                );
+              } else {
+                // Portrait — no SafeArea so art goes behind status bar
+                return Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: (_) {
+                    _resetLyricsInactivityTimer();
+                  },
+                  child: Stack(
+                    children: [
+                      // Swipeable PageView
+                      Positioned.fill(
+                        child: PageView(
+                          controller: _pageController,
+                          physics: const NeverScrollableScrollPhysics(),
+                          onPageChanged: (page) {
+                            setState(() {
+                              _currentPage = page;
+                              if (page != 0) {
+                                _isLyricsExpanded = false;
+                                _lyricsInactivityTimer?.cancel();
+                              } else {
+                                _startLyricsInactivityTimer();
+                              }
+                            });
+                          },
+                          children: [
+                            _buildLyricsPage(context, ref, mediaItem),
+                            _buildMainPage(context, ref, mediaItem, playerArtImageSize),
+                            _buildQueuePage(context, ref, mediaItem),
+                          ],
                         ),
+                      ),
 
-                        // Sticky pull-down handle at the top center of the screen
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOutCubic,
-                          top: _isLyricsExpanded ? -30 : 0,
-                          left: 0,
-                          right: 0,
-                          height: 30,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                            },
-                            child: Center(
-                              child: Container(
-                                width: 36,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  color: (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black).withValues(alpha: 0.35),
-                                  borderRadius: BorderRadius.circular(2.5),
-                                ),
+                      // Sticky pull-down handle — overlaid at top
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                        top: _isLyricsExpanded
+                            ? -40
+                            : MediaQuery.of(context).padding.top + 8,
+                        left: 0,
+                        right: 0,
+                        height: 24,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Center(
+                            child: Container(
+                              width: 36,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.45),
+                                borderRadius: BorderRadius.circular(2),
                               ),
                             ),
                           ),
                         ),
+                      ),
 
-                        // Sticky Controls overlayed at bottom
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOutCubic,
-                          left: 0,
-                          right: 0,
-                          bottom: _isLyricsExpanded ? -300 : 0,
-                          child: _buildStickyBottomControls(context, ref, mediaItem),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              },
-            ),
+                      // Sticky Controls overlayed at bottom
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                        left: 0,
+                        right: 0,
+                        bottom: _isLyricsExpanded ? -300 : 0,
+                        child: _buildStickyBottomControls(context, ref, mediaItem),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
           ),
         ],
       ),
@@ -304,94 +295,67 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
 
   Widget _buildMainPage(BuildContext context, WidgetRef ref, MediaItem? mediaItem, double playerArtSize) {
     final screenHeight = MediaQuery.of(context).size.height;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          // Top spacing
-          SizedBox(height: MediaQuery.of(context).padding.top + screenHeight * 0.09),
+    final controlsHeight = screenHeight * 0.34;
+    // Art fills from the very top of the screen down to the controls area
+    final artHeight = screenHeight - controlsHeight;
 
-          // Large Album Art
-          Center(
+    return Stack(
+      children: [
+        // Full-bleed album art — edge-to-edge from top, fading into the blurred background below
+        // This avoids any black/white tinting, keeping the blur pure in both modes.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: artHeight + controlsHeight * 0.15,
+          child: ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: [0.0, 0.65, 1.0],
+              colors: [Colors.white, Colors.white, Colors.transparent],
+            ).createShader(bounds),
+            blendMode: BlendMode.dstIn,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onHorizontalDragStart: (details) {
                 if (_pageController.hasClients) {
-                  _drag = _pageController.position.drag(details, () {
-                    _drag = null;
-                  });
+                  _drag = _pageController.position.drag(details, () => _drag = null);
                 }
               },
-              onHorizontalDragUpdate: (details) {
-                _drag?.update(details);
-              },
-              onHorizontalDragEnd: (details) {
-                _drag?.end(details);
-              },
-              onHorizontalDragCancel: () {
-                _drag?.cancel();
-              },
-              child: StreamBuilder<bool>(
-                stream: ref.read(audioHandlerProvider).player.playingStream,
-                initialData: ref.read(audioHandlerProvider).player.playing,
-                builder: (context, snapshot) {
-                  final isPlaying = snapshot.data ?? false;
-                  final double artSize = isPlaying ? playerArtSize : playerArtSize * 0.88;
-
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOutCubic,
-                    width: artSize,
-                    height: artSize,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(isPlaying ? 12 : 20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isPlaying ? 0.45 : 0.3),
-                          blurRadius: isPlaying ? 32 : 16,
-                          spreadRadius: isPlaying ? -4 : -2,
-                          offset: Offset(0, isPlaying ? 16 : 8),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(isPlaying ? 12 : 20),
-                      child: mediaItem?.artUri != null
-                          ? CachedNetworkImage(
-                              imageUrl: mediaItem!.artUri.toString().replaceAll(
-                                RegExp(r'w\d+-h\d+'),
-                                'w800-h800',
-                              ),
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
-                              errorWidget: (context, url, error) => Container(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
-                            )
-                          : Container(
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
-                              child: Icon(Icons.music_note, size: 64, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)),
-                            ),
-                    ),
-                  );
-                },
-              ),
+              onHorizontalDragUpdate: (details) => _drag?.update(details),
+              onHorizontalDragEnd: (details) => _drag?.end(details),
+              onHorizontalDragCancel: () => _drag?.cancel(),
+              child: mediaItem?.artUri != null
+                  ? CachedNetworkImage(
+                      imageUrl: mediaItem!.artUri.toString().replaceAll(
+                        RegExp(r'w\d+-h\d+'),
+                        'w800-h800',
+                      ),
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                      width: double.infinity,
+                      height: double.infinity,
+                      placeholder: (context, url) => const SizedBox.shrink(),
+                      errorWidget: (context, url, error) => const ColoredBox(color: Colors.transparent),
+                    )
+                  : const ColoredBox(color: Colors.transparent),
             ),
           ),
+        ),
 
-          const Spacer(),
-
-          // Title, Artist, Favorite, Options
-          if (mediaItem != null)
-            _buildSongMetaRow(context, ref, mediaItem),
-
-          // Space above bottom controls (percentage based)
-          SizedBox(height: screenHeight * 0.015),
-          
-          // Bottom controls offset spacer (percentage based)
-          SizedBox(height: screenHeight * 0.33),
-        ],
-      ),
+        // Title & artist overlay — sits just above the controls area
+        if (mediaItem != null)
+          Positioned(
+            left: 22,
+            right: 22,
+            bottom: controlsHeight + 12,
+            child: _buildSongMetaRow(context, ref, mediaItem),
+          ),
+      ],
     );
   }
+
 
   Widget _buildSongMetaRow(BuildContext context, WidgetRef ref, MediaItem mediaItem) {
     final storage = ref.watch(storageServiceProvider);
@@ -400,30 +364,58 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Artist
+        Text(
+          mediaItem.artist ?? "Unknown Artist",
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
         Row(
           children: [
             // Title
             Expanded(
               child: SizedBox(
-                height: 32,
+                height: 34,
                 child: Marquee(
                   delay: const Duration(milliseconds: 300),
                   duration: const Duration(seconds: 10),
                   child: Text(
                     mediaItem.title,
-                    style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
-                          letterSpacing: -0.5,
-                        ),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                 ),
               ),
             ),
-            
-            const SizedBox(width: 16),
-            
+
+            const SizedBox(width: 12),
+
+            // Options button (circular, translucent background)
+            _buildCircularIconButton(
+              context,
+              icon: const Icon(
+                Icons.more_horiz,
+                color: Colors.white,
+                size: 18,
+              ),
+              onPressed: () {
+                final result = _getMuzoItemFromMediaItem(mediaItem);
+                SongOptionsMenu.show(context, ref, result, fromPlayer: true);
+              },
+            ),
+
+            const SizedBox(width: 10),
+
             // Favorite button (circular, translucent background)
             ValueListenableBuilder(
               valueListenable: storage.favoritesListenable,
@@ -432,8 +424,8 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 return _buildCircularIconButton(
                   context,
                   icon: Icon(
-                    isFav ? FluentIcons.star_24_filled : FluentIcons.star_24_regular,
-                    color: isFav ? Colors.yellow[600] : Theme.of(context).colorScheme.onSurface,
+                    isFav ? FluentIcons.heart_24_filled : FluentIcons.heart_24_regular,
+                    color: isFav ? Colors.red[400] : Colors.white,
                     size: 18,
                   ),
                   onPressed: () {
@@ -447,53 +439,24 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 );
               },
             ),
-            
-            const SizedBox(width: 12),
-
-            // Options button (circular, translucent background)
-            _buildCircularIconButton(
-              context,
-              icon: Icon(
-                Icons.more_horiz,
-                color: Theme.of(context).colorScheme.onSurface,
-                size: 18,
-              ),
-              onPressed: () {
-                final result = _getMuzoItemFromMediaItem(mediaItem);
-                SongOptionsMenu.show(context, ref, result, fromPlayer: true);
-              },
-            ),
           ],
-        ),
-        const SizedBox(height: 4),
-        // Artist
-        Text(
-          mediaItem.artist ?? "Unknown Artist",
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
   }
 
   Widget _buildCircularIconButton(BuildContext context, {required Widget icon, required VoidCallback onPressed}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      width: 34,
-      height: 34,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+        color: Colors.white.withValues(alpha: 0.18),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(18),
           onTap: onPressed,
           child: Center(child: icon),
         ),
@@ -535,7 +498,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 width: 44,
                 height: 44,
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
+                errorWidget: (_, __, ___) => Container(color: Colors.white.withValues(alpha: 0.1)),
               ),
             ),
             const SizedBox(width: 12),
@@ -548,7 +511,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                   Text(
                     mediaItem.title,
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
+                      color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -559,7 +522,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                   Text(
                     mediaItem.artist ?? "Unknown Artist",
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                     maxLines: 1,
@@ -576,7 +539,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 return IconButton(
                   icon: Icon(
                     isFav ? FluentIcons.star_24_filled : FluentIcons.star_24_regular,
-                    color: isFav ? Colors.yellow[600] : Theme.of(context).colorScheme.onSurface,
+                    color: isFav ? Colors.yellow[600] : Colors.white,
                     size: 20,
                   ),
                   onPressed: () {
@@ -588,7 +551,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
             ),
             // Options button
             IconButton(
-              icon: Icon(Icons.more_horiz, color: Theme.of(context).colorScheme.onSurface, size: 20),
+              icon: Icon(Icons.more_horiz, color: Colors.white, size: 20),
               onPressed: () {
                 final result = _getMuzoItemFromMediaItem(mediaItem);
                 SongOptionsMenu.show(context, ref, result, fromPlayer: true);
@@ -622,12 +585,12 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: _isLoadingLyrics
-                ? Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.onSurface))
+                ? Center(child: CircularProgressIndicator(color: Colors.white))
                 : cachedLyrics == null
                     ? Center(
                         child: Text(
                           "No lyrics found",
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 16),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 16),
                         ),
                       )
                     : LyricsView(
@@ -637,7 +600,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                         totalDuration: mediaItem.duration ?? ref.watch(audioHandlerProvider).player.duration ?? Duration.zero,
                         isEmbedded: false,
                         scrollable: true,
-                        accentColor: Theme.of(context).colorScheme.onSurface,
+                        accentColor: Colors.white,
                       ),
           ),
         ),
@@ -693,7 +656,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                     ? Center(
                         child: Text(
                           "No upcoming songs",
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 14),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
                         ),
                       )
                     : ReorderableListView.builder(
@@ -764,7 +727,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                         context,
                         icon: Icon(
                           FluentIcons.arrow_shuffle_24_regular,
-                          color: shuffleEnabled ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.onSurface,
+                          color: shuffleEnabled ? Colors.black : Colors.white,
                           size: 20,
                         ),
                         isActive: shuffleEnabled,
@@ -777,7 +740,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                           loopMode == LoopMode.one
                               ? FluentIcons.arrow_repeat_1_24_regular
                               : FluentIcons.arrow_repeat_all_24_regular,
-                          color: isRepeatEnabled ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.onSurface,
+                          color: isRepeatEnabled ? Colors.black : Colors.white,
                           size: 20,
                         ),
                         isActive: isRepeatEnabled,
@@ -796,7 +759,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                         context,
                         icon: Icon(
                           Icons.all_inclusive,
-                          color: storage.isAutoQueueEnabled ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
+                          color: storage.isAutoQueueEnabled ? Colors.black : Colors.white.withValues(alpha: 0.8),
                           size: 20,
                         ),
                         isActive: storage.isAutoQueueEnabled,
@@ -810,7 +773,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                         context,
                         icon: Icon(
                           Icons.waves_rounded,
-                          color: isLofi ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.onSurface,
+                          color: isLofi ? Colors.black : Colors.white,
                           size: 20,
                         ),
                         isActive: isLofi,
@@ -828,9 +791,8 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
   }
 
   Widget _buildQueuePillButton(BuildContext context, {required Widget icon, required bool isActive, required VoidCallback onPressed}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeBg = Theme.of(context).colorScheme.onSurface;
-    final inactiveBg = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15);
+    final activeBg = Colors.white;
+    final inactiveBg = Colors.white.withValues(alpha: 0.15);
 
     return Container(
       width: 58,
@@ -868,7 +830,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 Text(
                   "Playing Next",
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -877,7 +839,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 Text(
                   "From $albumName",
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 13,
                   ),
                   maxLines: 1,
@@ -896,7 +858,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
             child: Text(
               "Clear",
               style: TextStyle(
-                color: queueLength <= 1 ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3) : Theme.of(context).primaryColor,
+                color: queueLength <= 1 ? Colors.white.withValues(alpha: 0.3) : Colors.white,
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
               ),
@@ -942,7 +904,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => Container(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
+                  errorWidget: (_, __, ___) => Container(color: Colors.white.withValues(alpha: 0.1)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -953,14 +915,14 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                   children: [
                     Text(
                       item.title,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 14),
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       item.artist ?? 'Unknown Artist',
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 12),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -972,7 +934,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 index: index,
                 child: Icon(
                   Icons.drag_handle,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                  color: Colors.white.withValues(alpha: 0.4),
                   size: 20,
                 ),
               ),
@@ -990,160 +952,167 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding > 0 ? bottomPadding : screenHeight * 0.025),
+      padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding > 0 ? bottomPadding : screenHeight * 0.028),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 1. Progress Slider
+          // Progress Bar — custom Slider with rounded-rect thumb matching reference
           StreamBuilder<Duration>(
             stream: player.positionStream,
             builder: (context, snapshot) {
               final position = snapshot.data ?? Duration.zero;
               final duration = mediaItem?.duration ?? player.duration ?? Duration.zero;
+              final maxMs = duration.inMilliseconds.toDouble().clamp(1.0, double.infinity);
+              final posMs = position.inMilliseconds.toDouble().clamp(0.0, maxMs);
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ProgressBar(
-                    thumbRadius: 0,
-                    thumbGlowRadius: 0,
-                    barHeight: 8,
-                    baseBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.18),
-                    bufferedBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.28),
-                    progressBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.85),
-                    thumbColor: Colors.transparent,
-                    timeLabelLocation: TimeLabelLocation.none,
-                    progress: position,
-                    total: duration,
-                    onSeek: (duration) {
-                      player.seek(duration);
-                    },
+                  SliderTheme(
+                    data: SliderThemeData(
+                      thumbShape: const _PlayerRoundedRectThumb(width: 6, height: 26, radius: 3),
+                      trackHeight: 14,
+                      activeTrackColor: Colors.white.withValues(alpha: 0.80),
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
+                      thumbColor: Colors.white,
+                      overlayShape: SliderComponentShape.noOverlay,
+                      trackShape: const _PlayerSliderTrackShape(),
+                    ),
+                    child: Slider(
+                      value: posMs,
+                      max: maxMs,
+                      onChanged: (v) => player.seek(Duration(milliseconds: v.round())),
+                    ),
                   ),
-                  SizedBox(height: screenHeight * 0.008),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Elapsed time
-                      Text(
-                        _formatDuration(position),
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
-                      ),
-                      // Remaining time (negative)
-                      Text(
-                        duration != Duration.zero
-                            ? "-${_formatDuration(duration - position)}"
-                            : "0:00",
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
-                      ),
-                    ],
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(position),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                        Text(
+                          duration != Duration.zero ? _formatDuration(duration) : '0:00',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               );
             },
           ),
 
-          SizedBox(height: screenHeight * 0.024),
+          SizedBox(height: screenHeight * 0.028),
 
-          // 2. Playback Controls Row
+          // Playback controls: Prev | Play/Pause | Next
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Previous button
+              // Previous
               IconButton(
-                icon: Icon(CupertinoIcons.backward_fill, color: Theme.of(context).colorScheme.onSurface, size: 38),
+                iconSize: 44,
+                icon: const Icon(CupertinoIcons.backward_fill, color: Colors.white),
                 onPressed: () => audioHandler.skipToPrevious(),
               ),
-              
-              // Play/Pause button
+
+              // Play / Pause
               StreamBuilder<PlayerState>(
                 stream: player.playerStateStream,
                 builder: (context, snapshot) {
-                  final playerState = snapshot.data;
-                  final processingState = playerState?.processingState;
-                  final playing = playerState?.playing ?? false;
-                  final isLoading = processingState == ProcessingState.loading || processingState == ProcessingState.buffering;
+                  final state = snapshot.data;
+                  final playing = state?.playing ?? false;
+                  final isLoading = state?.processingState == ProcessingState.loading ||
+                      state?.processingState == ProcessingState.buffering;
 
                   if (isLoading) {
-                    return SizedBox(
-                      width: 54,
-                      height: 54,
-                      child: CircularProgressIndicator(color: Theme.of(context).colorScheme.onSurface, strokeWidth: 3),
+                    return const SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      ),
                     );
                   }
 
                   return IconButton(
+                    iconSize: 56,
                     icon: Icon(
                       playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                      color: Theme.of(context).colorScheme.onSurface,
-                      size: 54,
+                      color: Colors.white,
                     ),
                     onPressed: () {
-                      if (playing) {
-                        player.pause();
-                      } else {
-                        player.play();
-                      }
+                      if (playing) player.pause();
+                      else player.play();
                     },
                   );
                 },
               ),
 
-              // Next button
+              // Next
               IconButton(
-                icon: Icon(CupertinoIcons.forward_fill, color: Theme.of(context).colorScheme.onSurface, size: 38),
+                iconSize: 44,
+                icon: const Icon(CupertinoIcons.forward_fill, color: Colors.white),
                 onPressed: () => audioHandler.skipToNext(),
               ),
             ],
           ),
 
-          SizedBox(height: screenHeight * 0.038),
+          SizedBox(height: screenHeight * 0.032),
 
-          // 4. Bottom Navigation Icon Bar
+          // Bottom nav: Lyrics | Player | Queue
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Lyrics toggle button
+              // Lyrics
               IconButton(
+                iconSize: 24,
                 icon: Icon(
                   FluentIcons.chat_24_regular,
-                  color: _currentPage == 0 ? Theme.of(context).primaryColor : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                  size: 20,
+                  color: _currentPage == 0
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.45),
                 ),
-                onPressed: () {
-                  if (_currentPage == 0) {
-                    _pageController.animateToPage(1, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-                  } else {
-                    _pageController.animateToPage(0, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-                  }
-                },
+                onPressed: () => _pageController.animateToPage(
+                  _currentPage == 0 ? 1 : 0,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                ),
               ),
 
-              // Main Player tab (thumbnail view)
+              // Player (main)
               IconButton(
+                iconSize: 24,
                 icon: Icon(
-                  Icons.music_note_rounded,
-                  color: _currentPage == 1 ? Theme.of(context).primaryColor : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                  size: 20,
+                  Icons.album_rounded,
+                  color: _currentPage == 1
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.45),
                 ),
-                onPressed: () {
-                  _pageController.animateToPage(1, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-                },
+                onPressed: () => _pageController.animateToPage(
+                  1,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                ),
               ),
 
-              // Queue toggle button
+              // Queue
               IconButton(
+                iconSize: 24,
                 icon: Icon(
                   FluentIcons.list_24_regular,
-                  color: _currentPage == 2 ? Theme.of(context).primaryColor : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                  size: 20,
+                  color: _currentPage == 2
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.45),
                 ),
-                onPressed: () {
-                  if (_currentPage == 2) {
-                    _pageController.animateToPage(1, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-                  } else {
-                    _pageController.animateToPage(2, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-                  }
-                },
+                onPressed: () => _pageController.animateToPage(
+                  _currentPage == 2 ? 1 : 2,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                ),
               ),
             ],
           ),
@@ -1153,15 +1122,14 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
   }
 
   Widget _buildRightPanelTab(BuildContext context, String label, bool isActive, VoidCallback onTap) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+
     
     return SizedBox(
       height: 32,
       child: Material(
         color: isActive 
-            ? theme.colorScheme.onSurface 
-            : (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.06)),
+            ? Colors.white 
+            : Colors.white.withValues(alpha: 0.15),
         shape: const StadiumBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1173,8 +1141,8 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                 label,
                 style: TextStyle(
                   color: isActive 
-                      ? theme.colorScheme.onPrimary 
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      ? Colors.black 
+                      : Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -1198,20 +1166,21 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ProgressBar(
-              thumbRadius: 0,
-              thumbGlowRadius: 0,
-              barHeight: 8,
-              baseBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.18),
-              bufferedBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.28),
-              progressBarColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.85),
-              thumbColor: Colors.transparent,
-              timeLabelLocation: TimeLabelLocation.none,
-              progress: position,
-              total: duration,
-              onSeek: (duration) {
-                player.seek(duration);
-              },
+            SliderTheme(
+              data: SliderThemeData(
+                thumbShape: const _PlayerRoundedRectThumb(width: 0, height: 0, radius: 0),
+                trackHeight: 8,
+                activeTrackColor: Colors.white.withValues(alpha: 0.85),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
+                thumbColor: Colors.transparent,
+                overlayShape: SliderComponentShape.noOverlay,
+                trackShape: const _PlayerSliderTrackShape(),
+              ),
+              child: Slider(
+                value: position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds.toDouble().clamp(1.0, double.infinity)),
+                max: duration.inMilliseconds.toDouble().clamp(1.0, double.infinity),
+                onChanged: (v) => player.seek(Duration(milliseconds: v.round())),
+              ),
             ),
             SizedBox(height: screenHeight * 0.008),
             Row(
@@ -1219,13 +1188,13 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
               children: [
                 Text(
                   _formatDuration(position),
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
                 ),
                 Text(
                   duration != Duration.zero
                       ? "-${_formatDuration(duration - position)}"
                       : "0:00",
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -1242,7 +1211,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         IconButton(
-          icon: Icon(CupertinoIcons.backward_fill, color: Theme.of(context).colorScheme.onSurface, size: 38),
+          icon: Icon(CupertinoIcons.backward_fill, color: Colors.white, size: 38),
           onPressed: () => audioHandler.skipToPrevious(),
         ),
         StreamBuilder<PlayerState>(
@@ -1257,14 +1226,14 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
               return SizedBox(
                 width: 54,
                 height: 54,
-                child: CircularProgressIndicator(color: Theme.of(context).colorScheme.onSurface, strokeWidth: 3),
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
               );
             }
 
             return IconButton(
               icon: Icon(
                 playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                color: Theme.of(context).colorScheme.onSurface,
+                color: Colors.white,
                 size: 54,
               ),
               onPressed: () {
@@ -1278,7 +1247,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
           },
         ),
         IconButton(
-          icon: Icon(CupertinoIcons.forward_fill, color: Theme.of(context).colorScheme.onSurface, size: 38),
+          icon: Icon(CupertinoIcons.forward_fill, color: Colors.white, size: 38),
           onPressed: () => audioHandler.skipToNext(),
         ),
       ],
@@ -1286,7 +1255,6 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
   }
 
   Widget _buildDesktopLayout(BuildContext context, WidgetRef ref, MediaItem? mediaItem) {
-    final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
 
     // Calculate responsive sizes based on available height to prevent vertical overflow
@@ -1318,7 +1286,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                       alignment: Alignment.centerLeft,
                       icon: Icon(
                         Icons.keyboard_arrow_down_rounded,
-                        color: theme.colorScheme.onSurface,
+                        color: Colors.white,
                         size: 28,
                       ),
                       onPressed: () => Navigator.of(context).pop(),
@@ -1364,12 +1332,12 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
                                                   'w800-h800',
                                                 ),
                                                 fit: BoxFit.cover,
-                                                placeholder: (context, url) => Container(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
-                                                errorWidget: (context, url, error) => Container(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
+                                                placeholder: (context, url) => Container(color: Colors.white.withValues(alpha: 0.1)),
+                                                errorWidget: (context, url, error) => Container(color: Colors.white.withValues(alpha: 0.1)),
                                               )
                                             : Container(
-                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-                                                child: Icon(Icons.music_note, size: 64, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                                                color: Colors.white.withValues(alpha: 0.1),
+                                                child: Icon(Icons.music_note, size: 64, color: Colors.white.withValues(alpha: 0.3)),
                                               ),
                                       ),
                                     );
@@ -1400,7 +1368,7 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
           // Vertical Divider
           Container(
             width: 1,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             margin: const EdgeInsets.symmetric(vertical: 32),
           ),
 
@@ -1443,3 +1411,106 @@ class _StandardPlayerState extends ConsumerState<StandardPlayer> {
   }
 }
 
+/// Custom rounded-rectangle thumb for the player slider.
+/// Matches the reference image: a small rounded-rect bar at the playback position.
+class _PlayerRoundedRectThumb extends SliderComponentShape {
+  final double width;
+  final double height;
+  final double radius;
+
+  const _PlayerRoundedRectThumb({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) => Size(width, height);
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required double value,
+    required double textScaleFactor,
+    required Size sizeWithOverflow,
+  }) {
+    final canvas = context.canvas;
+    final paint = Paint()
+      ..color = sliderTheme.thumbColor ?? Colors.white
+      ..style = PaintingStyle.fill;
+    final rect = Rect.fromCenter(center: center, width: width, height: height);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)), paint);
+  }
+}
+
+/// Custom track shape: active fill has flat right end, inactive has flat left end.
+/// This eliminates the rounded cap at the thumb position on the fill side.
+class _PlayerSliderTrackShape extends SliderTrackShape with BaseSliderTrackShape {
+  const _PlayerSliderTrackShape();
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    final Rect trackRect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    final double r = trackRect.height / 2;
+
+    // Active track: rounded left cap, flat right end (at thumb)
+    final Paint activePaint = Paint()
+      ..color = sliderTheme.activeTrackColor ?? Colors.white;
+    context.canvas.drawRRect(
+      RRect.fromLTRBAndCorners(
+        trackRect.left,
+        trackRect.top,
+        thumbCenter.dx,
+        trackRect.bottom,
+        topLeft: Radius.circular(r),
+        bottomLeft: Radius.circular(r),
+        topRight: Radius.zero,
+        bottomRight: Radius.zero,
+      ),
+      activePaint,
+    );
+
+    // Inactive track: flat left end (at thumb), rounded right cap
+    final Paint inactivePaint = Paint()
+      ..color = sliderTheme.inactiveTrackColor ?? Colors.white.withValues(alpha: 0.2);
+    context.canvas.drawRRect(
+      RRect.fromLTRBAndCorners(
+        thumbCenter.dx,
+        trackRect.top,
+        trackRect.right,
+        trackRect.bottom,
+        topLeft: Radius.zero,
+        bottomLeft: Radius.zero,
+        topRight: Radius.circular(r),
+        bottomRight: Radius.circular(r),
+      ),
+      inactivePaint,
+    );
+  }
+}

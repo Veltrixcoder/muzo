@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:muzo/services/muzo_api_service.dart';
+import 'package:muzo/models/muzo_item.dart';
 
 /// A single syllable/word within a karaoke lyric line
 class KaraokeSyllable {
@@ -60,37 +62,68 @@ class Lyrics {
   }
 }
 
-final lyricsServiceProvider = Provider((ref) => LyricsService());
+final lyricsServiceProvider = Provider((ref) => LyricsService(ref));
 
 class LyricsService {
-  static const String _baseUrl = 'https://lrclib.net/api';
+  final Ref ref;
+  LyricsService(this.ref);
 
   Future<Lyrics?> fetchLyrics(
     String trackName,
     String artistName,
-    int duration,
-  ) async {
-    final cleanTrack = _cleanTitle(trackName);
-    final cleanArtist = _cleanTitle(artistName);
+    int duration, {
+    String? videoId,
+  }) async {
+    debugPrint('LyricsService: fetchLyrics called with trackName="$trackName", artistName="$artistName", videoId="$videoId"');
+    
+    var queryArtist = artistName;
+    if (!queryArtist.contains(',') && videoId != null && videoId.isNotEmpty) {
+      try {
+        final searchRes = await ref.read(muzoApiServiceProvider).search(trackName, filter: 'songs');
+        final matchingSong = searchRes.results.cast<MuzoItem?>().firstWhere(
+          (s) => s?.videoId == videoId,
+          orElse: () => null,
+        );
+        if (matchingSong != null && matchingSong.artists != null && matchingSong.artists!.length > 1) {
+          final fullArtist = matchingSong.artists!.map((a) => a.name).join(', ');
+          debugPrint('LyricsService: Resolved multiple artists from search API: "$fullArtist"');
+          queryArtist = fullArtist;
+        }
+      } catch (e) {
+        debugPrint('LyricsService: Failed to resolve multiple artists: $e');
+      }
+    }
 
-    // 1. Try Atomix Lyrics API primary
+    final cleanTrack = _cleanTrack(trackName);
+    final cleanArtist = _cleanArtist(queryArtist);
+    debugPrint('LyricsService: cleaned: cleanTrack="$cleanTrack", cleanArtist="$cleanArtist"');
+
     try {
-      final atomixUri = Uri.parse('https://lyrics.geeked.wtf/v2/lyrics/get').replace(
-        queryParameters: {'title': cleanTrack, 'artist': cleanArtist, 'duration': duration.toString()},
-      );
+      final idPart = (videoId == null || videoId.isEmpty) ? 'unknown' : videoId;
+      final nameEncoded = _customUrlEncode(cleanTrack);
+      final artistEncoded = _customUrlEncode(cleanArtist);
+      final urlString = 'https://allnewuser-lyrics.hf.space/api/lyrics/$idPart?name=$nameEncoded&artist=$artistEncoded';
+      final uri = Uri.parse(urlString);
 
-      debugPrint('LyricsService: Requesting Atomix GET $atomixUri');
-      final atomixRes = await http.get(atomixUri).timeout(const Duration(seconds: 10));
+      debugPrint('LyricsService: Requesting unified lyrics: $uri');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      debugPrint('LyricsService: Unified response code: ${response.statusCode}');
 
-      if (atomixRes.statusCode == 200) {
-        final atomixData = json.decode(atomixRes.body);
-        final String responseType = atomixData['type'] ?? '';
-        // Handle both 'Line' (line-level) and 'Word' (word-level syllable) responses
-        final bool isSupported = (responseType == 'Line' || responseType == 'Word') &&
-            atomixData['lyrics'] != null;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final String source = data['source'] ?? '';
 
-        if (isSupported) {
-          final List<dynamic> lines = atomixData['lyrics'];
+        // Case 1: lrclib source or contains plainLyrics/syncedLyrics
+        if (source == 'lrclib' || data['plainLyrics'] != null || data['syncedLyrics'] != null) {
+          if (data['plainLyrics'] != null || data['syncedLyrics'] != null) {
+            debugPrint('LyricsService: Found lyrics via LRCLIB source');
+            return Lyrics.fromJson(data);
+          }
+        } 
+        // Case 2: atomix/apple/line-based structures (lyrics != null)
+        else if (data['lyrics'] != null) {
+          final String responseType = data['type'] ?? 'Line';
+          final List<dynamic> lines = data['lyrics'];
           
           final StringBuffer syncedBuffer = StringBuffer();
           final StringBuffer plainBuffer = StringBuffer();
@@ -98,7 +131,6 @@ class LyricsService {
 
           for (var line in lines) {
             final int rawMs = line['time'] ?? 0;
-            // No offset — use raw timestamps from API
             final String text = (line['text'] as String? ?? '').trim();
             if (text.isEmpty) continue;
 
@@ -110,7 +142,7 @@ class LyricsService {
             syncedBuffer.writeln('[$minutes:$seconds.$hundredths] $text');
             plainBuffer.writeln(text);
 
-            // For Word-type: parse syllable-level data into KaraokeLine
+            // Parse syllable-level data for Word-type
             if (responseType == 'Word') {
               final List<dynamic> syllabi = (line['syllabus'] as List<dynamic>?) ?? [];
               final List<KaraokeSyllable> syllables = syllabi.map((s) {
@@ -120,6 +152,7 @@ class LyricsService {
                   text: s['text'] as String? ?? '',
                 );
               }).toList();
+              
               karaokeLines!.add(KaraokeLine(
                 lineStart: Duration(milliseconds: rawMs),
                 fullText: text,
@@ -131,15 +164,15 @@ class LyricsService {
           }
 
           if (plainBuffer.isNotEmpty) {
-             debugPrint('LyricsService: Found lyrics via Atomix API (type: $responseType)');
+             debugPrint('LyricsService: Found lyrics via $source source (type: $responseType)');
              return Lyrics(
                id: 0,
                name: cleanTrack,
                trackName: cleanTrack,
                artistName: cleanArtist,
-               albumName: '',
+               albumName: data['albumName'] ?? '',
                duration: duration,
-               instrumental: false,
+               instrumental: data['instrumental'] ?? false,
                plainLyrics: plainBuffer.toString(),
                syncedLyrics: syncedBuffer.toString(),
                karaokeLines: karaokeLines,
@@ -148,100 +181,13 @@ class LyricsService {
         }
       }
     } catch (e) {
-      debugPrint('LyricsService: Error in Atomix GET: $e');
-    }
-
-    // 2. Fallback to LRCLIB Try exact match with cleaned metadata
-    try {
-      final uri = Uri.parse('$_baseUrl/get').replace(
-        queryParameters: {'track_name': cleanTrack, 'artist_name': cleanArtist},
-      );
-
-      debugPrint('LyricsService: Requesting LRCLIB GET $uri');
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      debugPrint('LyricsService: LRCLIB GET Response ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['plainLyrics'] != null || data['syncedLyrics'] != null) {
-          debugPrint('LyricsService: Found exact match via LRCLIB GET');
-          return Lyrics.fromJson(data);
-        }
-      } else if (response.statusCode == 404) {
-        // Fallback to search
-        debugPrint('LyricsService: LRCLIB GET failed (404), falling back to SEARCH');
-        return _searchLyrics(cleanTrack, cleanArtist, duration);
-      }
-
-      return null;
-    } catch (e) {
-      debugPrint('LyricsService: Error in LRCLIB GET: $e');
-      // Last resort try search on error too
-      return _searchLyrics(cleanTrack, cleanArtist, duration);
-    }
-  }
-
-  Future<Lyrics?> _searchLyrics(
-    String track,
-    String artist,
-    int duration,
-  ) async {
-    try {
-      final uri = Uri.parse(
-        '$_baseUrl/search',
-      ).replace(queryParameters: {'track_name': track, 'artist_name': artist});
-      debugPrint('LyricsService: Searching $uri');
-
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        final List<dynamic> list = json.decode(response.body);
-        debugPrint('LyricsService: Search returned ${list.length} results');
-
-        if (list.isEmpty) return null;
-
-        // Find best match based on duration
-        Lyrics? bestMatch;
-        int minDiff = 1000000;
-
-        for (var item in list) {
-          final l = Lyrics.fromJson(item);
-          final diff = (l.duration - duration).abs();
-
-          // Check if it has lyrics
-          if (l.plainLyrics.isEmpty && l.syncedLyrics.isEmpty) continue;
-
-          // Allow up to 3 seconds difference for "perfect" match, otherwise find closest
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestMatch = l;
-          }
-        }
-
-        // Only return if within acceptable range (e.g. 5 seconds), otherwise it might be wrong song
-        if (minDiff <= 5 && bestMatch != null) {
-          debugPrint(
-            'LyricsService: Found best match "${bestMatch.trackName}" with diff ${minDiff}s',
-          );
-          return bestMatch;
-        } else {
-          debugPrint(
-            'LyricsService: No match within duration tolerance (Best diff: ${minDiff}s)',
-          );
-        }
-      } else {
-        debugPrint(
-          'LyricsService: Search failed with status ${response.statusCode}',
-        );
-      }
-    } catch (e) {
-      debugPrint('LyricsService: Search Error: $e');
+      debugPrint('LyricsService: Error fetching unified lyrics: $e');
     }
     return null;
   }
 
-  String _cleanTitle(String text) {
-    debugPrint('LyricsService: Cleaning title: "$text"');
+  String _cleanTrack(String text) {
+    debugPrint('LyricsService: Cleaning track: "$text"');
     if (text.isEmpty) return text;
 
     try {
@@ -269,11 +215,45 @@ class LyricsService {
       clean = clean.replaceAll(' - Topic', '');
 
       final result = clean.trim();
-      debugPrint('LyricsService: Cleaned title: "$result"');
+      debugPrint('LyricsService: Cleaned track: "$result"');
       return result;
     } catch (e) {
-      debugPrint('LyricsService: Error cleaning title "$text": $e');
+      debugPrint('LyricsService: Error cleaning track "$text": $e');
       return text; // Return original if cleaning fails
     }
+  }
+
+  String _cleanArtist(String text) {
+    debugPrint('LyricsService: Cleaning artist: "$text"');
+    if (text.isEmpty) return text;
+
+    try {
+      var clean = text.replaceAll(' - Topic', '');
+
+      // Split by common separators: ",", "&", "/", "and", "feat.", "ft.", "featuring"
+      final separatorPattern = RegExp(
+        r'(?:\s*,\s*|\s*&\s*|\s*/\s*|\s+(?:and|feat\.?|ft\.?|featuring)\s+)',
+        caseSensitive: false,
+      );
+      
+      final parts = clean.split(separatorPattern);
+      final cleanParts = parts
+          .map((p) => p.trim())
+          .where((p) => p.isNotEmpty)
+          .toList();
+
+      final result = cleanParts.isNotEmpty ? cleanParts.join(', ') : clean.trim();
+      debugPrint('LyricsService: Cleaned artist: "$result"');
+      return result;
+    } catch (e) {
+      debugPrint('LyricsService: Error cleaning artist "$text": $e');
+      return text;
+    }
+  }
+
+  String _customUrlEncode(String input) {
+    // Uri.encodeComponent encodes spaces as %20.
+    // It also encodes commas as %2C. We want commas to remain unencoded.
+    return Uri.encodeComponent(input).replaceAll('%2C', ',');
   }
 }

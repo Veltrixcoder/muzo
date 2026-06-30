@@ -6,6 +6,9 @@ import 'package:muzo/models/user_data.dart';
 import 'package:muzo/services/muzo_api_service.dart';
 import 'package:muzo/services/ytm_home.dart';
 import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 final storageServiceProvider = Provider<StorageService>((ref) {
   return StorageService();
@@ -610,7 +613,46 @@ class StorageService {
     await _settingsBox.put('hasShownDiscordPopup', value);
   }
 
+  // Star Repo Popup
+  bool get hasShownStarRepoPopup => _settingsBox.get('hasShownStarRepoPopup', defaultValue: false);
+  Future<void> setHasShownStarRepoPopup(bool value) async {
+    await _settingsBox.put('hasShownStarRepoPopup', value);
+  }
+
+  // First Install Date (stored as ISO-8601 string, set once)
+  String? get firstInstallDateString => _settingsBox.get('firstInstallDate') as String?;
+  Future<void> recordFirstInstallDateIfNeeded() async {
+    if (firstInstallDateString == null) {
+      await _settingsBox.put('firstInstallDate', DateTime.now().toIso8601String());
+    }
+  }
+  DateTime? get firstInstallDate {
+    final s = firstInstallDateString;
+    if (s == null) return null;
+    return DateTime.tryParse(s);
+  }
+
   // Cache Helpers
+  Future<void> clearAppCache() async {
+    try {
+      // Clear network image cache
+      await DefaultCacheManager().emptyCache();
+
+      // Clear temporary directory
+      final tempDir = await getTemporaryDirectory();
+      if (tempDir.existsSync()) {
+        final tempFiles = tempDir.listSync();
+        for (final entity in tempFiles) {
+          try {
+            entity.deleteSync(recursive: true);
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing cache: $e');
+    }
+  }
+
   Future<void> _saveHistoryToCache(List<MuzoItem> history) async {
     try {
       final box = Hive.box(_historyBoxName);

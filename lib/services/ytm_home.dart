@@ -9,10 +9,18 @@ const String userAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36';
 
 class YouTubeMusicHomeService {
+  /// Cached once per app session so we don't re-download the full HTML page
+  /// on every home refresh (saves 300–600ms per call after the first).
+  static String? _cachedVisitorId;
+
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+      },
     ),
   );
 
@@ -49,8 +57,14 @@ class YouTubeMusicHomeService {
   }
 
   Future<void> initialize() async {
+    // Reuse cached visitor ID across refreshes — only fetch once per session.
+    if (_cachedVisitorId != null) {
+      _headers['X-Goog-Visitor-Id'] = _cachedVisitorId!;
+      return;
+    }
     final visitorId = await _generateVisitorId();
     if (visitorId != null) {
+      _cachedVisitorId = visitorId;
       _headers['X-Goog-Visitor-Id'] = visitorId;
     }
   }

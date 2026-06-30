@@ -121,7 +121,11 @@ class AudioHandler {
             final result = MuzoItem(
               videoId: tag.id,
               title: tag.title,
-              artists: [MuzoArtist(name: tag.artist ?? '', id: '')],
+              artists: (tag.artist ?? '')
+                  .split(RegExp(r'\s*,\s*'))
+                  .map((name) => MuzoArtist(name: name.trim(), id: ''))
+                  .where((a) => a.name.isNotEmpty)
+                  .toList(),
               thumbnails: [
                 MuzoThumbnail(
                   url: tag.artUri?.toString() ?? '',
@@ -207,6 +211,25 @@ class AudioHandler {
         }
       }
     });
+
+    // ── Error recovery ──────────────────────────────────────────────────────
+    // -1008 on macOS/iOS means the CDN URL is expired or geo-blocked.
+    // In just_audio 0.9.x, errors surface as exceptions on playbackEventStream.
+    // We intercept them here, pull a fresh stream URL (bypassing Saavn cache),
+    // swap the AudioSource in-place and resume playback automatically.
+    _player.playbackEventStream.handleError((Object error, StackTrace st) async {
+      final msg = error.toString();
+      debugPrint('AudioHandler: playbackEvent error: $msg');
+      final isResourceError = msg.contains('-1008') ||
+          msg.toLowerCase().contains('resource unavailable') ||
+          msg.toLowerCase().contains('failed to load') ||
+          msg.toLowerCase().contains('source error') ||
+          msg.toLowerCase().contains('could not load');
+      if (isResourceError) {
+        debugPrint('AudioHandler: Resource error detected — attempting source refresh...');
+        await _recoverFromResourceError();
+      }
+    }).listen((_) {});
   }
 
   Future<void> _applyReverb(int sessionId, bool enable) async {
@@ -218,6 +241,77 @@ class AudioHandler {
       });
     } catch (e) {
       debugPrint("Error toggling reverb: $e");
+    }
+  }
+
+  /// Called when just_audio reports a resource/load error (-1008 or similar).
+  /// Re-extracts the stream URL for the current track (bypassing Saavn cache,
+  /// going straight to FastYt) then swaps the source in-place
+  /// and resumes playback.
+  Future<void> _recoverFromResourceError() async {
+    try {
+      final index = _player.currentIndex;
+      final sequence = _player.sequenceState?.sequence;
+      if (index == null || sequence == null || index >= sequence.length) return;
+
+      final tag = sequence[index].tag;
+      String? videoId;
+      String? title;
+      String? artist;
+      int? durationSeconds;
+
+      if (tag is MediaItem) {
+        videoId = tag.id;
+        title = tag.title;
+        artist = tag.artist;
+        durationSeconds = tag.duration?.inSeconds;
+      }
+      if (videoId == null) return;
+      if (videoId.startsWith('user_track_')) return; // user tracks can't be re-extracted
+
+      debugPrint('AudioHandler: Re-extracting stream for $videoId (force-fresh, skip Saavn)...');
+      isLoadingStream.value = true;
+
+      // Force a fresh extraction, bypassing Saavn (whose URLs expire quickly)
+      final freshUrl = await StreamExtractionService.getStreamUrl(
+        videoId,
+        title: title,
+        artist: artist,
+        durationSeconds: durationSeconds,
+        forceFresh: true,
+      );
+
+      if (freshUrl == null) {
+        debugPrint('AudioHandler: Re-extraction returned null for $videoId');
+        isLoadingStream.value = false;
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          showGlassSnackBar(context, 'Stream unavailable — could not find an alternate source');
+        }
+        return;
+      }
+
+      debugPrint('AudioHandler: Got fresh URL, swapping source...');
+      final position = _player.position;
+
+      final freshSource = AudioSource.uri(
+        Uri.parse(freshUrl),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Mobile Safari/537.36',
+        },
+        tag: tag,
+      );
+
+      await _playlist.removeAt(index);
+      await _playlist.insert(index, freshSource);
+      await _player.seek(position, index: index);
+      unawaited(_player.play());
+      isLoadingStream.value = false;
+      debugPrint('AudioHandler: Source swapped and playback resumed for $videoId');
+    } catch (e) {
+      debugPrint('AudioHandler: Error during source recovery: $e');
+      isLoadingStream.value = false;
     }
   }
 
@@ -270,6 +364,17 @@ class AudioHandler {
       isLoadingStream.value = false;
     } catch (e) {
       debugPrint('Error playing video: $e');
+      final msg = e.toString();
+      final isResourceError = msg.contains('-1008') ||
+          msg.toLowerCase().contains('resource unavailable') ||
+          msg.toLowerCase().contains('failed to load') ||
+          msg.toLowerCase().contains('source error') ||
+          msg.toLowerCase().contains('could not load');
+      if (isResourceError) {
+        debugPrint('playVideo: Resource error on initial load — triggering recovery...');
+        await _recoverFromResourceError();
+        return;
+      }
       isLoadingStream.value = false;
       _isInitialLoading = false;
       final context = navigatorKey.currentContext;
@@ -727,13 +832,29 @@ class ResolvingAudioSource extends StreamAudioSource {
     HttpClientResponse response;
     try {
       response = await _makeRequest(start, end);
-      if (response.statusCode == 403) {
+
+      // On any 4xx CDN error (403 Forbidden, 410 Gone, etc.) the URL has
+      // expired. Force-fresh skips Saavn (whose URLs expire fastest) and goes
+      // straight to FastYt for a new valid URL.
+      if (response.statusCode == 403 ||
+          response.statusCode == 410 ||
+          (response.statusCode >= 400 && response.statusCode < 500)) {
         debugPrint(
-            'ResolvingAudioSource: 403 Forbidden. Retrying with fresh URL...');
+          'ResolvingAudioSource: ${response.statusCode} — force-fresh re-resolve for $videoId...',
+        );
         _resolvedUrl = null;
-        await resolve();
+        final mediaItem = tag as MediaItem?;
+        _resolvedUrl = await StreamExtractionService.getStreamUrl(
+          videoId,
+          title: mediaItem?.title,
+          artist: mediaItem?.artist,
+          durationSeconds: mediaItem?.duration?.inSeconds,
+          forceFresh: true,
+        );
         if (_resolvedUrl == null) {
-          throw Exception('Failed to re-resolve stream URL for $videoId');
+          throw Exception(
+            'Failed to re-resolve stream URL for $videoId after ${response.statusCode}',
+          );
         }
         response = await _makeRequest(start, end);
       }
@@ -762,9 +883,8 @@ class ResolvingAudioSource extends StreamAudioSource {
       sourceLength: sourceLength,
       contentLength: contentLength,
       offset: start ?? 0,
-      contentType:
-          response.headers.contentType?.toString() ?? 'audio/mpeg',
+      contentType: response.headers.contentType?.toString() ?? 'audio/mpeg',
       stream: response,
     );
   }
-}
+}

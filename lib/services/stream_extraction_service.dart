@@ -1,15 +1,23 @@
-import 'dart:io';
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
-import 'package:http/http.dart' as http;
-import 'package:muzoapi/youtube_stream_provider.dart';
+import 'fastytservice.dart';
 
 class StreamExtractionService {
   static final Map<String, bool> isSaavnCache = {};
+
+  /// Shared Dio instance — reuses TCP connections across calls (avoids 200–500ms
+  /// connection setup per song play).
+  static final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+      headers: {
+        'Connection': 'keep-alive',
+      },
+    ),
+  );
 
   static String _cleanArtist(String artist) {
     String cleaned = artist;
@@ -85,10 +93,8 @@ class StreamExtractionService {
     return cleaned.isNotEmpty ? cleaned : title;
   }
 
-  /// Fetches audio stream from the Saavn API first
   static Future<String?> getSaavnStreamUrl(String title, String artist, {int? durationSeconds}) async {
     try {
-      final dio = Dio();
 
       final cleanTitle = _cleanTitle(title, artist);
       final cleanArtist = _cleanArtist(artist);
@@ -107,7 +113,7 @@ class StreamExtractionService {
       };
       debugPrint('SaavnExtraction: Requesting stream for "$cleanTitle" by "$cleanArtist" (${durationString ?? "unknown"})');
       
-      final response = await dio.get<String>(
+      final response = await _dio.get<String>(
         'https://fast-saavn.vercel.app/',
         queryParameters: queryParams,
         options: Options(
@@ -131,23 +137,39 @@ class StreamExtractionService {
     return null;
   }
 
-  /// Race Saavn and InnerTube to find the fastest stream URL
+  static Future<YtAudioQuality> _getAudioQuality() async {
+    int qualityIndex = 0;
+    try {
+      final box = Hive.isBoxOpen('settings')
+          ? Hive.box('settings')
+          : await Hive.openBox('settings');
+      qualityIndex = box.get('audioQuality', defaultValue: 0);
+    } catch (e) {
+      debugPrint('StreamExtraction: Error reading audio quality from Hive: $e');
+    }
+    if (qualityIndex == 0) return YtAudioQuality.high;
+    if (qualityIndex == 2) return YtAudioQuality.low;
+    return YtAudioQuality.auto;
+  }
+
+  /// Race Saavn and YouTube (FastYt) to find the fastest stream URL
   static Future<String?> _raceFastExtractions({
     required String videoId,
     required String? title,
     required String? artist,
     required int? durationSeconds,
+    required YtAudioQuality quality,
   }) async {
     final completer = Completer<String?>();
     int completedCount = 0;
     const totalCount = 2;
     final stopwatch = Stopwatch()..start();
 
-    debugPrint('StreamExtraction: Starting race [Saavn vs InnerTube] for $videoId');
+    debugPrint('StreamExtraction: Starting race [Saavn vs FastYt] for $videoId');
 
     void handleSuccess(String? url, bool isSaavn) {
       if (completer.isCompleted) return;
-      final providerName = isSaavn ? "Saavn" : "InnerTube";
+      final providerName = isSaavn ? "Saavn" : "FastYt";
       if (url != null) {
         isSaavnCache[videoId] = isSaavn;
         debugPrint('StreamExtraction: [Race Winner] $providerName won the race in ${stopwatch.elapsedMilliseconds}ms');
@@ -156,7 +178,7 @@ class StreamExtractionService {
         debugPrint('StreamExtraction: [Race Status] $providerName completed with no stream in ${stopwatch.elapsedMilliseconds}ms');
         completedCount++;
         if (completedCount >= totalCount) {
-          debugPrint('StreamExtraction: [Race Over] Both Saavn and InnerTube failed to resolve a stream in ${stopwatch.elapsedMilliseconds}ms');
+          debugPrint('StreamExtraction: [Race Over] Both Saavn and FastYt failed to resolve a stream in ${stopwatch.elapsedMilliseconds}ms');
           completer.complete(null);
         }
       }
@@ -176,220 +198,65 @@ class StreamExtractionService {
       completedCount++;
     }
 
-    // Task 2: InnerTube Extraction
-    debugPrint('StreamExtraction: [InnerTube] Dispatching fetch for videoId: $videoId');
-    _getYoutubeStreamUrlViaInnerTube(videoId).then((url) {
+    // Task 2: FastYt Extraction
+    debugPrint('StreamExtraction: [FastYt] Dispatching fetch for videoId: $videoId');
+    YtExtractorService.getStreamUrl(videoId, quality: quality).then((url) {
       handleSuccess(url, false);
     }).catchError((e) {
-      debugPrint('StreamExtraction: [InnerTube] Threw error: $e');
+      debugPrint('StreamExtraction: [FastYt] Threw error: $e');
       handleSuccess(null, false);
     });
 
     return completer.future;
   }
 
-  static Future<String?> _getYoutubeStreamUrlViaInnerTube(String videoId) async {
-    try {
-      debugPrint('StreamExtraction: [InnerTube] Querying player endpoint for videoId: $videoId');
-      final yt = CustomInnerTube();
-      final streamInfo = await yt.player(videoId);
-      if (streamInfo.audioStreams.isNotEmpty) {
-        final sortedStreams = streamInfo.audioStreams.toList()
-          ..sort((a, b) => b.bitrate.compareTo(a.bitrate));
-
-        int qualityIndex = 0; // Default: high
-        try {
-          if (Hive.isBoxOpen('settings')) {
-            qualityIndex = Hive.box('settings').get('audioQuality', defaultValue: 0);
-          } else {
-            final box = await Hive.openBox('settings');
-            qualityIndex = box.get('audioQuality', defaultValue: 0);
-          }
-        } catch (e) {
-          debugPrint('StreamExtraction: [InnerTube] Error reading audio quality from Hive: $e');
-        }
-
-        AudioStream selectedStream;
-        if (qualityIndex == 0) {
-          // High quality
-          selectedStream = sortedStreams.first;
-        } else if (qualityIndex == 2) {
-          // Low quality
-          selectedStream = sortedStreams.last;
-        } else {
-          // Medium quality: closest to 128 kbps
-          selectedStream = sortedStreams.first;
-          double minDiff = double.infinity;
-          for (final stream in sortedStreams) {
-            final diff = (stream.bitrate - 128000.0).abs();
-            if (diff < minDiff) {
-              minDiff = diff;
-              selectedStream = stream;
-            }
-          }
-        }
-        debugPrint('StreamExtraction: [InnerTube] Selected stream: ${selectedStream.bitrate} bps, mime: ${selectedStream.mimeType}');
-        return selectedStream.url;
-      } else {
-        debugPrint('StreamExtraction: [InnerTube] No audio streams returned by InnerTube player');
-      }
-    } catch (e) {
-      debugPrint('StreamExtraction: [InnerTube] Extraction Error: $e');
-    }
-    return null;
-  }
-
-  /// Extracts the best audio stream URL, checking Saavn and InnerTube in parallel first,
-  /// then falling back to YoutubeExplode on failure/error.
+  /// Extracts the best audio stream URL, checking Saavn and FastYt in parallel first.
+  ///
+  /// Set [forceFresh] to true to skip Saavn entirely (e.g. when recovering from a
+  /// -1008 / resource-unavailable error — Saavn CDN URLs expire quickly).
   static Future<String?> getStreamUrl(
     String videoId, {
     String? title,
     String? artist,
     int? durationSeconds,
+    bool forceFresh = false,
   }) async {
     final overallStopwatch = Stopwatch()..start();
-    debugPrint('StreamExtraction: --- getStreamUrl started for $videoId ---');
-    
-    // 1. Race Saavn and InnerTube
-    final fastUrl = await _raceFastExtractions(
-      videoId: videoId,
-      title: title,
-      artist: artist,
-      durationSeconds: durationSeconds,
-    );
+    debugPrint('StreamExtraction: --- getStreamUrl started for $videoId (forceFresh=$forceFresh) ---');
 
-    if (fastUrl != null) {
-      debugPrint('StreamExtraction: Fast extraction succeeded in ${overallStopwatch.elapsedMilliseconds}ms (isSaavn: ${isSaavnCache[videoId]})');
-      return fastUrl;
+    final quality = await _getAudioQuality();
+
+    if (!forceFresh) {
+      // 1. Race Saavn and FastYt
+      final fastUrl = await _raceFastExtractions(
+        videoId: videoId,
+        title: title,
+        artist: artist,
+        durationSeconds: durationSeconds,
+        quality: quality,
+      );
+
+      if (fastUrl != null) {
+        final provider = isSaavnCache[videoId] == true ? 'Saavn' : 'FastYt';
+        debugPrint('StreamExtraction: SUCCESS -> Using FAST EXTRACTION ($provider) in ${overallStopwatch.elapsedMilliseconds}ms');
+        return fastUrl;
+      }
+      debugPrint('StreamExtraction: Fast extraction failed after ${overallStopwatch.elapsedMilliseconds}ms.');
+    } else {
+      debugPrint('StreamExtraction: forceFresh=true — skipping Saavn, going straight to FastYt...');
+      // Try FastYt directly when force-fresh
+      try {
+        final fastYtUrl = await YtExtractorService.getStreamUrl(videoId, quality: quality);
+        isSaavnCache[videoId] = false;
+        debugPrint('StreamExtraction: SUCCESS -> Using FAST EXTRACTION (FastYt force-fresh) in ${overallStopwatch.elapsedMilliseconds}ms');
+        return fastYtUrl;
+      } catch (e) {
+        debugPrint('StreamExtraction: [FastYt] Failed force-fresh fetch: $e');
+      }
     }
-
-    debugPrint('StreamExtraction: Fast extraction failed after ${overallStopwatch.elapsedMilliseconds}ms. Falling back to YoutubeExplode...');
 
     isSaavnCache[videoId] = false;
-
-    // 2. YoutubeExplode (Android VR Client) fallback
-    final yt = YoutubeExplode();
-    try {
-      debugPrint('FastExtraction: Extracting stream for $videoId');
-      final manifest = await yt.videos.streamsClient.getManifest(
-        videoId,
-        ytClients: [YoutubeApiClient.androidVr],
-      );
-
-      Iterable<AudioOnlyStreamInfo> audioStreams = manifest.audioOnly;
-      if (Platform.isMacOS || Platform.isIOS) {
-        final mp4Streams = audioStreams.where((s) => s.container == StreamContainer.mp4);
-        if (mp4Streams.isNotEmpty) {
-          audioStreams = mp4Streams;
-        }
-      }
-
-      if (audioStreams.isNotEmpty) {
-        AudioOnlyStreamInfo selectedStream;
-        final sortedStreams = audioStreams.toList()
-          ..sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-        
-        var qualityIndex = 0; // Default: high
-        try {
-          if (Hive.isBoxOpen('settings')) {
-            qualityIndex = Hive.box('settings').get('audioQuality', defaultValue: 0);
-          } else {
-            final box = await Hive.openBox('settings');
-            qualityIndex = box.get('audioQuality', defaultValue: 0);
-          }
-        } catch (e) {
-          debugPrint('Error reading audio quality from Hive: $e');
-        }
-
-        if (qualityIndex == 0) {
-          // High quality
-          selectedStream = sortedStreams.first;
-        } else if (qualityIndex == 2) {
-          // Low quality
-          selectedStream = sortedStreams.last;
-        } else {
-          // Medium quality: closest to 128 kbps
-          selectedStream = sortedStreams.first;
-          double minDiff = double.infinity;
-          for (final stream in sortedStreams) {
-            final diff = (stream.bitrate.kiloBitsPerSecond - 128.0).abs();
-            if (diff < minDiff) {
-              minDiff = diff;
-              selectedStream = stream;
-            }
-          }
-        }
-
-        debugPrint('StreamExtraction: [YoutubeExplode] Found stream (quality index $qualityIndex) - ${selectedStream.url}');
-        debugPrint('StreamExtraction: --- getStreamUrl completed successfully in ${overallStopwatch.elapsedMilliseconds}ms ---');
-        return selectedStream.url.toString();
-      } else {
-        debugPrint('StreamExtraction: [YoutubeExplode] No audio streams found.');
-      }
-    } catch (e) {
-      debugPrint("StreamExtraction: [YoutubeExplode] Error: $e");
-    } finally {
-      yt.close();
-    }
-
-    debugPrint('StreamExtraction: --- getStreamUrl failed completely in ${overallStopwatch.elapsedMilliseconds}ms ---');
+    debugPrint('StreamExtraction: FAILURE -> Could not extract stream URL via any source. Duration: ${overallStopwatch.elapsedMilliseconds}ms');
     return null;
-  }
-}
-
-// Custom InnerTube subclass to resolve the player API issues
-class CustomInnerTube extends InnerTube {
-  CustomInnerTube({super.options});
-
-  @override
-  String get baseUrl => 'https://www.youtube.com/youtubei/v1/';
-
-  @override
-  Map<String, String> getHeaders() {
-    return {
-      'Content-Type': 'application/json',
-      'User-Agent': 'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
-    };
-  }
-
-  @override
-  Map<String, dynamic> getContextPayload() {
-    return {
-      'context': {
-        'client': {
-          'clientName': 'ANDROID_VR',
-          'clientVersion': '1.60.19',
-          'deviceModel': 'Quest 3',
-          'deviceMake': 'Oculus',
-          'osVersion': '12L',
-          'osName': 'Android',
-          'androidSdkVersion': '32',
-          'hl': 'en',
-          'timeZone': 'UTC',
-          'utcOffsetMinutes': 0,
-        }
-      },
-    };
-  }
-
-  @override
-  Future<Map<String, dynamic>> makeRequest(
-      String endpoint, Map<String, dynamic> payload) async {
-    try {
-      final uri = Uri.parse('$baseUrl$endpoint?prettyPrint=false');
-      final response = await http.post(
-        uri,
-        headers: getHeaders(),
-        body: jsonEncode(payload),
-      );
-
-      if (response.statusCode >= 400) {
-        throw Exception('HTTP error! status: ${response.statusCode}');
-      }
-
-      return jsonDecode(response.body);
-    } catch (error) {
-      throw Exception('YouTube API Error: $error');
-    }
   }
 }

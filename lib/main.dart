@@ -9,6 +9,7 @@ import 'package:muzo/services/navigator_key.dart';
 import 'package:muzo/services/notification_service.dart';
 
 import 'package:muzo/widgets/main_layout.dart';
+import 'package:muzo/widgets/floating_sleep_timer.dart';
 import 'package:muzo/providers/theme_provider.dart';
 import 'package:muzo/providers/settings_provider.dart';
 import 'package:muzo/services/auth_service.dart';
@@ -75,9 +76,17 @@ class MyApp extends ConsumerWidget {
           title: 'Muzo',
           debugShowCheckedModeBanner: false,
           theme: theme,
-          // No builder wrapping here — MainLayout is only applied inside AuthGate
-          // for authenticated / guest sessions. This prevents the navbar and
-          // mini player from ever rendering on top of the auth screen.
+          // No builder wrapping here for the main layout — MainLayout is only
+          // applied inside AuthGate for authenticated / guest sessions.
+          // We use builder solely to display the global FloatingSleepTimer.
+          builder: (context, child) {
+            return Stack(
+              children: [
+                if (child != null) child,
+                const FloatingSleepTimer(),
+              ],
+            );
+          },
           home: const AuthGate(),
         );
       },

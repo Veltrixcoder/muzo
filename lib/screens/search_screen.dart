@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +17,26 @@ class SearchScreen extends ConsumerStatefulWidget {
 }
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
+  /// Debounced suggestion query — updated 250 ms after the user stops typing.
+  String _debouncedSuggestionQuery = '';
+  Timer? _suggestionTimer;
+
+  @override
+  void dispose() {
+    _suggestionTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String text) {
+    _suggestionTimer?.cancel();
+    if (text.isEmpty) {
+      if (mounted) setState(() => _debouncedSuggestionQuery = '');
+      return;
+    }
+    _suggestionTimer = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() => _debouncedSuggestionQuery = text);
+    });
+  }
 
   void _performSearch(String query) {
     final controller = ref.read(searchControllerProvider);
@@ -100,6 +121,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 16),
             ),
+            onChanged: _onQueryChanged,
             onSubmitted: (value) {
               if (value.trim().isNotEmpty) {
                 ref.read(searchQueryProvider.notifier).state = value.trim();
@@ -138,9 +160,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 builder: (context, textValue, _) {
                   final text = textValue.text;
                   final showSuggestions = text.isNotEmpty && focusNode.hasFocus;
-                  
+
                   if (showSuggestions) {
-                    final suggestionsAsync = ref.watch(searchSuggestionsProvider(text));
+                    // Use debounced query to avoid a network request per keystroke
+                    final suggestionsAsync = ref.watch(
+                      searchSuggestionsProvider(_debouncedSuggestionQuery),
+                    );
                     return _buildSuggestions(suggestionsAsync);
                   } else {
                     return _buildResults(searchResults, currentFilter);
@@ -155,7 +180,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildIos26Filters(BuildContext context, WidgetRef ref, String currentFilter) {
-    final filters = ['All', 'Songs', 'Videos', 'Albums', 'Artists', 'Playlists', 'Channels'];
+    final filters = ['All', 'Songs', 'Videos', 'Albums', 'Artists', 'Playlists'];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
@@ -321,7 +346,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           for (final r in results) {
             grouped.putIfAbsent(r.category ?? 'Other', () => []).add(r);
           }
-          final order = ['Songs', 'Videos', 'Albums', 'Artists', 'Playlists', 'Channels'];
+          final order = ['Songs', 'Videos', 'Albums', 'Artists', 'Playlists'];
           final cats = grouped.keys.toList()
             ..sort((a, b) {
               final ia = order.indexOf(a);

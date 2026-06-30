@@ -46,6 +46,12 @@ class MuzoApiService {
   static const Map<String, String> _ytHeaders = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    // NOTE: Do NOT set Accept-Encoding manually. The http.IOClient automatically
+    // negotiates gzip and decompresses responses. Setting it explicitly causes
+    // the server to compress but the client skips decompression, breaking jsonDecode.
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive',
   };
 
   void dispose() {
@@ -68,6 +74,51 @@ class MuzoApiService {
     }
 
     return response;
+  }
+
+  /// Shared retry-aware GET for all muzo-api (extendedWorker) endpoints.
+  ///
+  /// Retries up to [maxAttempts] times on 403 / 429 / 5xx responses **and**
+  /// on any network or decode exception, with 600 ms × attempt backoff.
+  /// Returns the final [http.Response] on success, or the last failed response
+  /// (or throws) after all attempts are exhausted.
+  Future<http.Response> _ytGet(
+    Uri uri, {
+    Duration timeout = const Duration(seconds: 20),
+    int maxAttempts = 3,
+  }) async {
+    http.Response? lastResponse;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final response = await _client
+            .get(uri, headers: _ytHeaders)
+            .timeout(timeout);
+        lastResponse = response;
+
+        if (response.statusCode == 200) return response;
+
+        final isRetryable = response.statusCode == 403 ||
+            response.statusCode == 429 ||
+            response.statusCode >= 500;
+        if (!isRetryable || attempt == maxAttempts - 1) {
+          debugPrint(
+            '[ytGet] Non-retryable or final attempt (${response.statusCode}) for $uri',
+          );
+          return response;
+        }
+        final delay = Duration(milliseconds: 600 * (attempt + 1));
+        debugPrint(
+          '[ytGet] ${response.statusCode} on attempt ${attempt + 1}/$maxAttempts — retrying in ${delay.inMilliseconds}ms',
+        );
+        await Future.delayed(delay);
+      } catch (e) {
+        debugPrint('[ytGet] Error on attempt ${attempt + 1}/$maxAttempts for $uri: $e');
+        if (attempt == maxAttempts - 1) rethrow;
+        await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+      }
+    }
+    // Unreachable, but satisfies the type system.
+    return lastResponse!;
   }
 
   // --- User Data ---
@@ -310,48 +361,32 @@ class MuzoApiService {
     try {
       final uri = Uri.parse('https://allnewuser-muzo.hf.space/api/trending?limit=20');
       debugPrint('TOP ON MUZO Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri);
       debugPrint('TOP ON MUZO Response [${response.statusCode}]');
 
-      if (response.statusCode != 200) {
-        return [];
-      }
+      if (response.statusCode != 200) return [];
 
       final data = jsonDecode(response.body);
       final List? trendingList = data['trending'] as List?;
-      if (trendingList == null) {
-        return [];
-      }
+      if (trendingList == null) return [];
 
-      return trendingList.where((e) => e is Map).map((json) {
+      return trendingList.whereType<Map>().map((json) {
         final map = Map<String, dynamic>.from(json);
         final String durationStr = map['duration'] != null ? map['duration'].toString() : '';
         int? durationSecs;
-        if (map['duration'] is int) {
-          durationSecs = map['duration'] as int;
-        }
+        if (map['duration'] is int) durationSecs = map['duration'] as int;
         return MuzoItem(
           title: map['title'] ?? 'Unknown Title',
-          thumbnails: [
-            MuzoThumbnail(
-              url: map['thumbnail'] ?? '',
-              width: 0,
-              height: 0,
-            ),
-          ],
+          thumbnails: [MuzoThumbnail(url: map['thumbnail'] ?? '', width: 0, height: 0)],
           resultType: 'song',
           isExplicit: false,
           videoId: map['videoId']?.toString(),
           channelName: map['channelName']?.toString(),
-          artists: [
-            MuzoArtist(
-              name: map['channelName'] ?? 'Unknown Artist',
-              id: '',
-            ),
-          ],
+          artists: (map['channelName']?.toString() ?? 'Unknown Artist')
+              .split(RegExp(r'\s*,\s*'))
+              .map((name) => MuzoArtist(name: name.trim(), id: ''))
+              .where((a) => a.name.isNotEmpty)
+              .toList(),
           duration: durationStr.isNotEmpty ? durationStr : null,
           durationSeconds: durationSecs,
         );
@@ -368,25 +403,14 @@ class MuzoApiService {
       final ids = videoIds.join(',');
       final uri = Uri.parse('https://nodejs-2588-3000.prg1.zerops.app/api/feed?ids=$ids&minScore=3');
       debugPrint('QUICK PICKS API Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri);
       debugPrint('QUICK PICKS API Response [${response.statusCode}]');
-
-      if (response.statusCode != 200) {
-        return [];
-      }
-
+      if (response.statusCode != 200) return [];
       final data = jsonDecode(response.body);
-      
       final feedList = data['feed'] as List?;
-      if (feedList == null) {
-        return [];
-      }
-
+      if (feedList == null) return [];
       return feedList
-          .where((e) => e is Map)
+          .whereType<Map>()
           .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
           .toList();
     } catch (e) {
@@ -397,113 +421,64 @@ class MuzoApiService {
 
   Future<List<MuzoItem>> getUpNext(String videoId) async {
     final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/related?videoId=$videoId');
-    int retries = 3;
-    int attempt = 0;
-
-    while (attempt < retries) {
-      attempt++;
-      try {
-        debugPrint('UPNEXT API Request (Attempt $attempt/$retries): $uri');
-        final response = await _client.get(
-          uri, 
-          headers: _ytHeaders,
-        ).timeout(const Duration(seconds: 15));
-
-        debugPrint('UPNEXT API Response [${response.statusCode}]');
-
-        if (response.statusCode != 200) {
-          debugPrint('UpNext API Error: ${response.statusCode}');
-          if (attempt < retries) {
-            await Future.delayed(Duration(seconds: attempt * 2));
-            continue;
-          }
-          return [];
-        }
-
-        final data = jsonDecode(response.body);
-        if (data['success'] != true) {
-          debugPrint('UPNEXT: success != true, data: $data');
-          if (attempt < retries) {
-            await Future.delayed(Duration(seconds: attempt * 2));
-            continue;
-          }
-          return [];
-        }
-
-        final List<dynamic>? list = data['songs'] as List?;
-        if (list == null) {
-          debugPrint('UPNEXT: songs key is null');
-          return [];
-        }
-        return list.map((e) => MuzoItem.fromJson(Map<String, dynamic>.from(e)..putIfAbsent('resultType', () => 'song'))).toList();
-      } catch (e) {
-        debugPrint('Error fetching Up Next (Attempt $attempt/$retries): $e');
-        if (attempt < retries) {
-          await Future.delayed(Duration(seconds: attempt * 2));
-          continue;
-        }
+    try {
+      debugPrint('UPNEXT API Request: $uri');
+      final response = await _ytGet(uri, timeout: const Duration(seconds: 15));
+      debugPrint('UPNEXT API Response [${response.statusCode}]');
+      if (response.statusCode != 200) return [];
+      final data = jsonDecode(response.body);
+      if (data['success'] != true) {
+        debugPrint('UPNEXT: success != true');
         return [];
       }
+      final List<dynamic>? list = data['songs'] as List?;
+      if (list == null) return [];
+      return list
+          .map((e) => MuzoItem.fromJson(
+                Map<String, dynamic>.from(e)..putIfAbsent('resultType', () => 'song'),
+              ))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching Up Next: $e');
+      return [];
     }
-    return [];
   }
   
-  // --- Search & Related (from YouTubeApiService) ---
+  // --- Search & Related ---
 
   Future<MuzoSearchResponse> search(
     String query, {
     String filter = 'songs',
     String? continuationToken,
   }) async {
+    final queryParams = {'q': query};
+    if (filter != 'all') queryParams['filter'] = filter;
+    if (continuationToken != null) queryParams['continuationToken'] = continuationToken;
+
+    final endpointPath = filter == 'videos' ? '/api/yt_search' : '/api/search';
+    final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}$endpointPath')
+        .replace(queryParameters: queryParams);
+
     try {
-      Uri uri;
-      final queryParams = {'q': query};
-
-      // If filter is explicitly 'all', don't send the filter parameter so we get categorized results
-      if (filter != 'all') {
-        queryParams['filter'] = filter;
-      }
-
-      if (continuationToken != null) {
-        queryParams['continuationToken'] = continuationToken;
-      }
-
-      // Route all searches through the vpn-cracked worker with query/filter params
-      // Use /api/yt_search specifically for videos filter
-      final endpointPath = filter == 'videos' ? '/api/yt_search' : '/api/search';
-      
-      uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}$endpointPath')
-          .replace(queryParameters: queryParams);
-
       debugPrint('YOUTUBE_API SEARCH Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri, maxAttempts: 5);
       debugPrint('YOUTUBE_API SEARCH Response [${response.statusCode}]');
-      debugPrint(
-        'YOUTUBE_API SEARCH RAW: ${response.body.substring(0, (response.body.length > 300) ? 300 : response.body.length)}',
-      );
-      if (response.statusCode != 200) {
-        return MuzoSearchResponse(results: []);
-      }
+      if (response.statusCode != 200) return MuzoSearchResponse(results: []);
 
       final data = jsonDecode(response.body);
       final resultsJson = data['results'] as List?;
-      final token = data['continuationToken'] as String?;
-
       if (resultsJson == null) {
-        debugPrint(
-          'YOUTUBE_API SEARCH: no results key. Keys: ${(data as Map?)?.keys.toList()}',
-        );
+        debugPrint('YOUTUBE_API SEARCH: no results key. Keys: ${(data as Map?)?.keys.toList()}');
         return MuzoSearchResponse(results: []);
       }
-
       final results = resultsJson
-          .where((e) => e is Map)
+          .whereType<Map>()
           .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
           .toList();
-      return MuzoSearchResponse(results: results, continuationToken: token);
+      for (var r in results) {
+        debugPrint('muzo_api_service: search result: title="${r.title}", videoId="${r.videoId}", artists=${r.artists?.map((a) => a.name).toList()}, displayArtist="${r.displayArtist}"');
+      }
+      return MuzoSearchResponse(results: results, continuationToken: data['continuationToken'] as String?);
     } catch (e) {
       debugPrint('YOUTUBE_API SEARCH error: $e');
       return MuzoSearchResponse(results: []);
@@ -512,18 +487,13 @@ class MuzoApiService {
 
   Future<List<MuzoItem>> getChannelVideos(String channelId) async {
     try {
-      final uri = Uri.parse(
-        '${ApiConstants.extendedWorkerBaseUrl}/api/feed/channels=$channelId',
-      );
+      final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/feed/channels=$channelId');
       debugPrint('YOUTUBE_API CHANNEL Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri);
       if (response.statusCode != 200) return [];
       final List<dynamic> data = jsonDecode(response.body);
       return data
-          .where((e) => e is Map)
+          .whereType<Map>()
           .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
           .toList();
     } catch (e) {
@@ -531,24 +501,18 @@ class MuzoApiService {
     }
   }
 
-  Future<List<MuzoItem>> getSubscriptionsFeed(
-    List<String> channelIds,
-  ) async {
+  Future<List<MuzoItem>> getSubscriptionsFeed(List<String> channelIds) async {
     if (channelIds.isEmpty) return [];
     try {
       final ids = channelIds.join(',');
-      final uri = Uri.parse(
-        '${ApiConstants.extendedWorkerBaseUrl}/api/feed/channels=$ids',
-      ).replace(queryParameters: {'preview': '1'});
+      final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/feed/channels=$ids')
+          .replace(queryParameters: {'preview': '1'});
       debugPrint('YOUTUBE_API SUBSCRIPTIONS Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri);
       if (response.statusCode != 200) return [];
       final List<dynamic> data = jsonDecode(response.body);
       return data
-          .where((e) => e is Map)
+          .whereType<Map>()
           .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
           .toList();
     } catch (e) {
@@ -558,37 +522,27 @@ class MuzoApiService {
 
   Future<List<String>> getSearchSuggestions(String query) async {
     try {
-      final uri = Uri.parse(
-        '${ApiConstants.extendedWorkerBaseUrl}/api/search/suggestions',
-      ).replace(queryParameters: {'q': query, 'music': '1'});
+      final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/search/suggestions')
+          .replace(queryParameters: {'q': query, 'music': '1'});
       debugPrint('YOUTUBE_API SUGGESTIONS Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
+      final response = await _ytGet(uri, timeout: const Duration(seconds: 10));
       if (response.statusCode != 200) return [];
       final data = jsonDecode(response.body);
       final suggestions = data['suggestions'] as List?;
       if (suggestions == null) return [];
       return suggestions.map((s) => s.toString()).toList();
     } catch (e) {
+      debugPrint('YOUTUBE_API SUGGESTIONS error: $e');
       return [];
     }
   }
 
   Future<Map<String, List<MuzoItem>>> getTrendingContent() async {
     try {
-      final uri = Uri.parse(
-        '${ApiConstants.extendedWorkerBaseUrl}/api/trending',
-      );
+      final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/trending');
       debugPrint('YOUTUBE_API TRENDING Request: $uri');
-      final response = await _client.get(
-        uri,
-        headers: _ytHeaders,
-      );
-      if (response.statusCode != 200) {
-        return {'songs': [], 'videos': [], 'playlists': []};
-      }
+      final response = await _ytGet(uri);
+      if (response.statusCode != 200) return {'songs': [], 'videos': [], 'playlists': []};
       final data = jsonDecode(response.body);
       if (data['success'] != true || data['data'] == null) {
         return {'songs': [], 'videos': [], 'playlists': []};
@@ -598,7 +552,7 @@ class MuzoApiService {
       List<MuzoItem> parseList(String key, {String? forceType}) {
         final list = content[key] as List?;
         if (list == null) return [];
-        return list.where((e) => e is Map).map((json) {
+        return list.whereType<Map>().map((json) {
           final map = Map<String, dynamic>.from(json);
           if (forceType != null) map['resultType'] = forceType;
           return MuzoItem.fromJson(map);
@@ -621,90 +575,72 @@ class MuzoApiService {
     try {
       final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/album/$albumId');
       debugPrint('YTIFY ALBUM API Request: $uri');
-      final response = await http.get(uri, headers: _ytHeaders);
+      final response = await _ytGet(uri);
       debugPrint('YTIFY ALBUM API Response [${response.statusCode}]');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final albumDetails = AlbumDetails.fromJson(data);
-
-        if (albumDetails.playlistId != null &&
-            albumDetails.playlistId!.isNotEmpty) {
-          try {
-            final playlistDetails = await getPlaylistDetails(
-              albumDetails.playlistId!,
-            );
-            if (playlistDetails != null && playlistDetails.tracks.isNotEmpty) {
-              return AlbumDetails(
-                id: albumDetails.id,
-                playlistId: albumDetails.playlistId,
-                title: albumDetails.title,
-                artist: albumDetails.artist,
-                year: albumDetails.year,
-                thumbnail: albumDetails.thumbnail,
-                tracks: playlistDetails.tracks,
-                type: albumDetails.type,
-              );
-            }
-          } catch (e) {
-            debugPrint(
-              'Failed to fetch playlist tracks, using album tracks: $e',
+      if (response.statusCode != 200) {
+        debugPrint('Muzo Album API Error: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+      final data = jsonDecode(response.body);
+      final albumDetails = AlbumDetails.fromJson(data);
+      if (albumDetails.playlistId != null && albumDetails.playlistId!.isNotEmpty) {
+        try {
+          final playlistDetails = await getPlaylistDetails(albumDetails.playlistId!);
+          if (playlistDetails != null && playlistDetails.tracks.isNotEmpty) {
+            return AlbumDetails(
+              id: albumDetails.id,
+              playlistId: albumDetails.playlistId,
+              title: albumDetails.title,
+              artist: albumDetails.artist,
+              year: albumDetails.year,
+              thumbnail: albumDetails.thumbnail,
+              tracks: playlistDetails.tracks,
+              type: albumDetails.type,
             );
           }
+        } catch (e) {
+          debugPrint('Failed to fetch playlist tracks, using album tracks: $e');
         }
-
-        return albumDetails;
-      } else {
-        debugPrint(
-          'Muzo Album API Error: ${response.statusCode} - ${response.body}',
-        );
       }
+      return albumDetails;
     } catch (e) {
       debugPrint('Error fetching album details: $e');
+      return null;
     }
-    return null;
   }
 
   Future<ArtistDetails?> getArtistDetails(String browseId) async {
     try {
       final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/artist/$browseId');
       debugPrint('YTIFY ARTIST API Request: $uri');
-      final response = await http.get(uri, headers: _ytHeaders);
+      final response = await _ytGet(uri);
       debugPrint('YTIFY ARTIST API Response [${response.statusCode}]');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return ArtistDetails.fromJson(data);
-      } else {
-        debugPrint(
-          'Muzo Artist API Error: ${response.statusCode} - ${response.body}',
-        );
+      if (response.statusCode != 200) {
+        debugPrint('Muzo Artist API Error: ${response.statusCode} - ${response.body}');
+        return null;
       }
+      return ArtistDetails.fromJson(jsonDecode(response.body));
     } catch (e) {
       debugPrint('Error fetching artist details: $e');
+      return null;
     }
-    return null;
   }
 
   Future<PlaylistDetails?> getPlaylistDetails(String playlistId) async {
     try {
       final uri = Uri.parse('${ApiConstants.extendedWorkerBaseUrl}/api/playlist/$playlistId');
       debugPrint('YTIFY PLAYLIST API Request: $uri');
-      final response = await http.get(uri, headers: _ytHeaders);
+      final response = await _ytGet(uri);
       debugPrint('YTIFY PLAYLIST API Response [${response.statusCode}]');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return PlaylistDetails.fromJson(data);
-      } else {
-        debugPrint(
-          'Muzo Playlist API Error: ${response.statusCode} - ${response.body}',
-        );
+      if (response.statusCode != 200) {
+        debugPrint('Muzo Playlist API Error: ${response.statusCode} - ${response.body}');
+        return null;
       }
+      return PlaylistDetails.fromJson(jsonDecode(response.body));
     } catch (e) {
       debugPrint('Error fetching playlist details: $e');
+      return null;
     }
-    return null;
   }
 
   // --- User Tracks ---

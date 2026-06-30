@@ -75,39 +75,42 @@ class _FloatingSleepTimerState extends ConsumerState<FloatingSleepTimer> {
                     width: 0.5,
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      FluentIcons.timer_24_filled,
-                      color: Theme.of(context).colorScheme.onSurface,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDuration(remaining),
-                      style: TextStyle(
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        FluentIcons.timer_24_filled,
                         color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () {
-                        ref.read(sleepTimerProvider.notifier).cancelTimer();
-                      },
-                      child: Icon(
-                        FluentIcons.dismiss_circle_24_filled,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.4),
                         size: 18,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Text(
+                        _formatDuration(remaining),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () {
+                          ref.read(sleepTimerProvider.notifier).cancelTimer();
+                        },
+                        child: Icon(
+                          FluentIcons.dismiss_circle_24_filled,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.4),
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

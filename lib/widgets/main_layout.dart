@@ -14,7 +14,6 @@ import 'package:muzo/widgets/glass_snackbar.dart';
 import 'package:muzo/services/navigator_key.dart';
 import 'package:muzo/providers/overlay_provider.dart';
 import 'package:app_links/app_links.dart';
-import 'package:muzo/widgets/floating_sleep_timer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:muzo/screens/profile_screen.dart';
@@ -61,6 +60,9 @@ class _MainLayoutState extends ConsumerState<MainLayout>
   Future<void> _checkCommunityPopups() async {
     final storage = ref.read(storageServiceProvider);
     
+    // Record first install date if not yet stored
+    await storage.recordFirstInstallDateIfNeeded();
+
     // 1. Spotify Import Announcement
     if (!storage.hasSeenSpotifyAnnouncement) {
       await Future.delayed(const Duration(milliseconds: 1500));
@@ -95,6 +97,22 @@ class _MainLayoutState extends ConsumerState<MainLayout>
         builder: (context) => const StartupPopupDialog(type: StartupPopupType.telegram),
       );
       await storage.setHasShownTelegramPopup(true);
+    }
+
+    // 4. Star Repo – shown after 2 days of usage
+    if (!storage.hasShownStarRepoPopup) {
+      final installDate = storage.firstInstallDate;
+      if (installDate != null &&
+          DateTime.now().difference(installDate) >= const Duration(days: 2)) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (!mounted) return;
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const StartupPopupDialog(type: StartupPopupType.starRepo),
+        );
+        await storage.setHasShownStarRepoPopup(true);
+      }
     }
   }
 
@@ -227,7 +245,6 @@ class _MainLayoutState extends ConsumerState<MainLayout>
                     ),
                     _buildLoadingOverlay(audioHandler),
                     _buildMiniPlayerPositioned(context, ref, isDesktop),
-                    const FloatingSleepTimer(),
                   ],
                 ),
               ),
@@ -239,7 +256,6 @@ class _MainLayoutState extends ConsumerState<MainLayout>
               _buildLoadingOverlay(audioHandler),
               _buildBottomNavBar(context, ref, selectedIndex),
               _buildMiniPlayerPositioned(context, ref, isDesktop),
-              const FloatingSleepTimer(),
             ],
           );
 

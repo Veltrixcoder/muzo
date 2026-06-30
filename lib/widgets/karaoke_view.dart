@@ -1,10 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:muzo/services/lyrics_service.dart';
 import 'package:muzo/providers/player_provider.dart';
+
+class KaraokeGroup {
+  final Duration lineStart;
+  final String fullText;
+  final List<KaraokeSyllable> syllables;
+  final String? translation;
+
+  KaraokeGroup({
+    required this.lineStart,
+    required this.fullText,
+    required this.syllables,
+    this.translation,
+  });
+}
 
 /// Karaoke-style lyrics view.
 /// Shows the full line; only the *current* word is bright white.
@@ -29,7 +42,7 @@ class KaraokeView extends ConsumerStatefulWidget {
   ConsumerState<KaraokeView> createState() => _KaraokeViewState();
 }
 
-class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProviderStateMixin {
+class _KaraokeViewState extends ConsumerState<KaraokeView> {
   StreamSubscription<Duration>? _sub;
   Duration _position = Duration.zero;
   int _activeLineIndex = -1;
@@ -41,51 +54,53 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
   Timer? _userScrollTimer;
 
   int _activeSyllableIndex = -1;
-
-  Ticker? _ticker;
-  DateTime _lastUpdateTime = DateTime.now();
-  Duration _lastStreamPosition = Duration.zero;
+  List<KaraokeGroup> _groupedLines = [];
 
   @override
   void initState() {
     super.initState();
-    _lineKeys = List.generate(widget.lines.length, (_) => GlobalKey());
+
+    // Group lines with the same timestamp (translation/transition support)
+    final grouped = <KaraokeGroup>[];
+    for (var line in widget.lines) {
+      if (grouped.isNotEmpty && grouped.last.lineStart == line.lineStart) {
+        final last = grouped.last;
+        grouped[grouped.length - 1] = KaraokeGroup(
+          lineStart: last.lineStart,
+          fullText: last.fullText,
+          syllables: last.syllables,
+          translation: line.fullText,
+        );
+      } else {
+        grouped.add(KaraokeGroup(
+          lineStart: line.lineStart,
+          fullText: line.fullText,
+          syllables: line.syllables,
+        ));
+      }
+    }
+    _groupedLines = grouped;
+    _lineKeys = List.generate(_groupedLines.length, (_) => GlobalKey());
+
     _sub = widget.positionStream.listen((pos) {
       if (!mounted) return;
-      _lastStreamPosition = pos;
-      _lastUpdateTime = DateTime.now();
       _position = pos;
       _updateActiveState();
     });
-
-    _ticker = createTicker((elapsed) {
-      final player = ref.read(audioHandlerProvider).player;
-      if (player.playing && mounted) {
-        final now = DateTime.now();
-        final delta = now.difference(_lastUpdateTime);
-        final speed = player.speed;
-        final newPos = _lastStreamPosition + delta * speed;
-        setState(() {
-          _position = newPos;
-          _updateActiveState();
-        });
-      }
-    });
-    _ticker!.start();
   }
 
   void _updateActiveState() {
     int newLineIndex = -1;
-    for (int i = widget.lines.length - 1; i >= 0; i--) {
-      if (_position >= widget.lines[i].lineStart) {
+    for (int i = _groupedLines.length - 1; i >= 0; i--) {
+      if (_position >= _groupedLines[i].lineStart) {
         newLineIndex = i;
         break;
       }
     }
 
     int newSylIndex = -1;
-    if (newLineIndex >= 0 && newLineIndex < widget.lines.length) {
-      final line = widget.lines[newLineIndex];
+    if (newLineIndex >= 0 && newLineIndex < _groupedLines.length) {
+      final line = _groupedLines[newLineIndex];
       for (int i = line.syllables.length - 1; i >= 0; i--) {
         final syl = line.syllables[i];
         if (_position >= syl.time) {
@@ -125,8 +140,8 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
           scrollable.position.ensureVisible(
             renderObj,
             alignment: 0.3,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
           );
         }
       }
@@ -137,15 +152,12 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
   void dispose() {
     _sub?.cancel();
     _userScrollTimer?.cancel();
-    _ticker?.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final double fontSize = widget.isEmbedded ? 24.0 : 28.0;
-
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification is UserScrollNotification) {
@@ -186,14 +198,36 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
             ? const BouncingScrollPhysics()
             : const NeverScrollableScrollPhysics(),
         padding: EdgeInsets.symmetric(
-          horizontal: 24,
           vertical: widget.isEmbedded ? 24 : 40,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: List.generate(widget.lines.length, (index) {
-            final line = widget.lines[index];
+          children: List.generate(_groupedLines.length, (index) {
+            final line = _groupedLines[index];
             final bool isActive = index == _activeLineIndex;
+
+            final lineContent = line.translation != null && line.translation!.isNotEmpty
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLineContent(line, isActive),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12.5, right: 12.5, top: 2.0, bottom: 18.0),
+                        child: Text(
+                          line.translation!,
+                          style: TextStyle(
+                            fontFamily: widget.fontFamily,
+                            fontSize: 20.0,
+                            fontWeight: FontWeight.w500,
+                            color: isActive ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.30),
+                            height: 1.2,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ],
+                  )
+                : _buildLineContent(line, isActive);
 
             return GestureDetector(
               onTap: () {
@@ -203,22 +237,22 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
                 });
                 ref.read(audioHandlerProvider).player.seek(line.lineStart);
               },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
+              child: Container(
                 key: _lineKeys[index],
-                padding: EdgeInsets.only(
-                  top: 10,
-                  bottom: 10,
-                  left: isActive ? 16.0 : 0.0,
-                ),
-                color: Colors.transparent,
                 width: double.infinity,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  opacity: isActive ? 1.0 : 0.50,
-                  child: _buildLineContent(line, fontSize, isActive),
+                margin: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 0.0),
+                color: Colors.transparent,
+                child: AnimatedScale(
+                  scale: isActive ? 1.0 : 0.98,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.centerLeft,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    opacity: isActive ? 1.0 : 0.40,
+                    child: lineContent,
+                  ),
                 ),
               ),
             );
@@ -228,98 +262,57 @@ class _KaraokeViewState extends ConsumerState<KaraokeView> with SingleTickerProv
     );
   }
 
-  /// Builds the text content of the line. Always returns Text.rich (RenderParagraph)
-  /// so that widget tree structures are identical between active and inactive lines.
-  Widget _buildLineContent(KaraokeLine line, double fontSize, bool isActive) {
-    final TextStyle baseStyle = TextStyle(
+  Widget _buildLineContent(KaraokeGroup line, bool isActive) {
+    final TextStyle activeStyle = TextStyle(
       fontFamily: widget.fontFamily,
-      fontSize: fontSize,
-      fontWeight: FontWeight.w900,
+      fontSize: 34.0,
+      fontWeight: FontWeight.w700,
       color: Colors.white,
-      height: 1.4,
-      shadows: const [
-        Shadow(
-          offset: Offset(0, 2),
-          blurRadius: 8,
-          color: Colors.black38,
-        ),
-      ],
+      height: 1.2,
+    );
+
+    final TextStyle inactiveStyle = TextStyle(
+      fontFamily: widget.fontFamily,
+      fontSize: 34.0,
+      fontWeight: FontWeight.w700,
+      color: Colors.white.withValues(alpha: 0.35),
+      height: 1.2,
     );
 
     if (!isActive) {
-      return Text.rich(
-        TextSpan(
-          text: line.fullText,
-          style: baseStyle,
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.5, vertical: 18.0),
+        child: Wrap(
+          alignment: WrapAlignment.start,
+          spacing: 6.0,
+          runSpacing: 4.0,
+          children: line.syllables.map((syl) {
+            return Text(
+              syl.text,
+              style: inactiveStyle,
+            );
+          }).toList(),
         ),
-        textAlign: TextAlign.left,
       );
     }
 
-    final List<InlineSpan> spans = [];
-    for (int i = 0; i < line.syllables.length; i++) {
-      final syl = line.syllables[i];
-      final start = syl.time;
-      final end = i < line.syllables.length - 1
-          ? line.syllables[i + 1].time
-          : syl.time + syl.duration;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.5, vertical: 18.0),
+      child: Wrap(
+        alignment: WrapAlignment.start,
+        spacing: 6.0,
+        runSpacing: 4.0,
+        children: List.generate(line.syllables.length, (i) {
+          final syl = line.syllables[i];
+          final bool isWordActive = i <= _activeSyllableIndex;
 
-      double progress = 0.0;
-      if (_position >= end) {
-        progress = 1.0;
-      } else if (_position >= start) {
-        final durationMs = end.inMilliseconds - start.inMilliseconds;
-        if (durationMs > 0) {
-          progress = (_position.inMilliseconds - start.inMilliseconds) / durationMs;
-        } else {
-          progress = 1.0;
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-
-      if (progress == 1.0) {
-        spans.add(TextSpan(
-          text: syl.text,
-          style: baseStyle,
-        ));
-      } else if (progress == 0.0) {
-        spans.add(TextSpan(
-          text: syl.text,
-          style: baseStyle.copyWith(
-            color: Colors.white.withValues(alpha: 0.50),
-          ),
-        ));
-      } else {
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
-          child: ShaderMask(
-            blendMode: BlendMode.srcIn,
-            shaderCallback: (bounds) {
-              return LinearGradient(
-                colors: [
-                  Colors.white,
-                  Colors.white.withValues(alpha: 0.50),
-                ],
-                stops: [progress, progress],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ).createShader(bounds);
-            },
-            child: Text(
-              syl.text,
-              style: baseStyle.copyWith(
-                shadows: null,
-              ),
-            ),
-          ),
-        ));
-      }
-    }
-
-    return Text.rich(
-      TextSpan(children: spans),
-      textAlign: TextAlign.left,
+          return AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 150),
+            style: isWordActive ? activeStyle : inactiveStyle,
+            child: Text(syl.text),
+          );
+        }),
+      ),
     );
   }
 }

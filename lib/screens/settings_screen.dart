@@ -12,6 +12,7 @@ import 'package:muzo/screens/settings/components/font_picker_dialog.dart';
 import 'package:muzo/providers/player_provider.dart';
 import 'package:muzo/providers/auth_gate_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:muzo/widgets/glass_snackbar.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -273,6 +274,24 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
 
+              _buildSection(context, 'Storage', [
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  leading: _buildSettingIconBox(FluentIcons.delete_24_regular, Colors.redAccent),
+                  title: Text('Clear Cache', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
+                  subtitle: Text('Clear images, lyrics, and temporary files', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 10.5)),
+                  trailing: Icon(CupertinoIcons.chevron_right, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                  onTap: () async {
+                    showGlassSnackBar(context, 'Clearing cache...');
+                    await ref.read(storageServiceProvider).clearAppCache();
+                    if (context.mounted) {
+                      showGlassSnackBar(context, 'Cache cleared successfully!');
+                    }
+                  },
+                ),
+              ]),
+
               _buildSection(context, 'About', [
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -323,7 +342,7 @@ class SettingsScreen extends ConsumerWidget {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   leading: _buildSettingIconBox(FluentIcons.info_24_regular, Colors.grey),
                   title: Text('Version', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
-                  trailing: Text('v4.0', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 12)),
+                  trailing: Text('v4.1', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55), fontSize: 12)),
                 ),
                 ListTile(
                   dense: true,
